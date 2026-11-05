@@ -224,7 +224,7 @@ export class CourseView {
       const gem = e.group.getObjectByName('gem');
       if (gem) {
         gem.rotation.y = this.time * 1.5;
-        gem.position.y = 0.87 + Math.sin(this.time * 2) * 0.05;
+        gem.position.y = (gem.userData.baseY as number) + Math.sin(this.time * 2) * 0.05;
       }
     }
     this.fireworks.update(dt);
