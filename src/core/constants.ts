@@ -8,9 +8,9 @@ export const LEVEL_HEIGHT = 0.5;
 export const MAX_LEVEL = 8;
 /** グリッドの半径（中心セルからのセル数） */
 export const GRID_RADIUS = 6;
-/** 球の半径 */
+/** マーブルの半径 */
 export const BALL_RADIUS = 0.12;
-/** レール上を転がる球の中心の、パーツ底面からの高さ */
+/** レール上を転がるマーブルの中心の、タイル底面からの高さ */
 export const TRACK_Y = 0.2;
 
 export interface PhysicsParams {

@@ -4,7 +4,7 @@ import { hexCorner } from '../core/hex';
 import { getPart, type PartType, type RouteDef } from '../core/parts';
 import type { Vec3 } from '../core/path';
 
-/** 球がレールに乗るときの、球の中心からレール中心までの距離 */
+/** マーブルがレールに乗るときの、マーブルの中心からレール中心までの距離 */
 const RAIL_RADIUS = 0.032;
 const RAIL_GAP = 0.085;
 const RAIL_DROP = Math.sqrt((BALL_RADIUS + RAIL_RADIUS) ** 2 - RAIL_GAP ** 2);
@@ -297,7 +297,7 @@ const BUILDERS: Record<PartType, Builder> = {
 
 const templates = new Map<PartType, THREE.Group>();
 
-/** パーツのメッシュ（ローカル座標、底面 y = 0）。ジオメトリは種類ごとに共有する */
+/** タイルのメッシュ（ローカル座標、底面 y = 0）。ジオメトリは種類ごとに共有する */
 export function createPartMesh(type: PartType): THREE.Group {
   let t = templates.get(type);
   if (!t) {

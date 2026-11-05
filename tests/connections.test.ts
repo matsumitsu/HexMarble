@@ -42,7 +42,7 @@ describe('hex grid', () => {
   });
 });
 
-describe('パーツ定義', () => {
+describe('タイル定義', () => {
   it('経路の端点は接続口の位置と一致する', () => {
     for (const def of Object.values(PARTS)) {
       for (const route of def.routes) {
@@ -68,7 +68,7 @@ describe('パーツ定義', () => {
     }
   });
 
-  it('隣り合うパーツの接続口はワールド座標でも同じ点になる', () => {
+  it('隣り合うタイルの接続口はワールド座標でも同じ点になる', () => {
     let c = emptyCourse();
     c = place(c, 'straight', 0, 0, 0);
     c = place(c, 'curve60', 1, 0, 3);
@@ -131,7 +131,7 @@ describe('接続判定', () => {
     expect(areConnected(c, 2, 3)).toBe(false);
   });
 
-  it('落下口の下の接続口は、真下のパーツの上の接続口とつながる', () => {
+  it('落下口の下の接続口は、真下のタイルの上の接続口とつながる', () => {
     let c = emptyCourse();
     c = place(c, 'goal', 0, 0);
     c = place(c, 'drop', 0, 0, 0);

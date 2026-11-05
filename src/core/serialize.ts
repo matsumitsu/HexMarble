@@ -45,7 +45,7 @@ export function parseCourse(text: string): Course {
   let starts = 0;
   obj.pieces.forEach((raw, i) => {
     const p = raw as Partial<Piece>;
-    const where = `${i + 1}番目のパーツ`;
+    const where = `${i + 1}番目のタイル`;
     if (!p || typeof p !== 'object') throw new Error(`${where}が不正です`);
     if (!isPartType(p.type)) throw new Error(`${where}の種類が不明です`);
     if (!isInt(p.q) || !isInt(p.r) || !inGrid(p.q, p.r)) throw new Error(`${where}の位置が不正です`);
@@ -55,17 +55,17 @@ export function parseCourse(text: string): Course {
     if (p.level + span - 1 > MAX_LEVEL) throw new Error(`${where}が高さの上限を超えています`);
     for (let l = p.level; l < p.level + span; l++) {
       const key = `${cellKey(p.q, p.r)}@${l}`;
-      if (occupied.has(key)) throw new Error(`${where}が他のパーツと重なっています`);
+      if (occupied.has(key)) throw new Error(`${where}が他のタイルと重なっています`);
       occupied.add(key);
     }
     if (p.type === 'start') starts++;
     pieces.push({ id: i + 1, type: p.type, q: p.q, r: p.r, level: p.level, rot: mod6(p.rot) });
   });
   if (starts > 1) throw new Error('スタートが複数あります');
-  // 宙に浮いたパーツがないか（積み上げが連続しているか）
+  // 宙に浮いたタイルがないか（積み上げが連続しているか）
   for (const p of pieces) {
     if (p.level === 0) continue;
-    if (!occupied.has(`${cellKey(p.q, p.r)}@${p.level - 1}`)) throw new Error('宙に浮いたパーツがあります');
+    if (!occupied.has(`${cellKey(p.q, p.r)}@${p.level - 1}`)) throw new Error('宙に浮いたタイルがあります');
   }
   return { pieces, nextId: pieces.length + 1 };
 }

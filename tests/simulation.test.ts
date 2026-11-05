@@ -117,7 +117,7 @@ describe('運動計算', () => {
     expect(new Set([firstGoal, secondGoal])).toEqual(new Set([3, 4]));
   });
 
-  it('落下口から真下のパーツへ落ちる', () => {
+  it('落下口から真下のタイルへ落ちる', () => {
     // ゴールの上に落下口。スタートを支柱で1レベル上げ、落下口の入口(辺0→西向き)へ
     const c2 = buildCourse([
       ['support', -1, 0],

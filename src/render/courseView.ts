@@ -199,7 +199,7 @@ export class CourseView {
     }
   }
 
-  /** 分岐パーツの羽根の向きを、次に球が向かう出口に合わせる */
+  /** 分岐タイルの羽根の向きを、次にマーブルが向かう出口に合わせる */
   setSplitterStates(course: Course, toggles: ReadonlyMap<number, number>): void {
     for (const p of course.pieces) {
       if (p.type !== 'splitter') continue;

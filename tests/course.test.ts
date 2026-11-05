@@ -57,7 +57,7 @@ describe('コース編集', () => {
     expect(c.pieces.filter((p) => p.type === 'support')).toHaveLength(1);
   });
 
-  it('削除すると上のパーツが下へずれる', () => {
+  it('削除すると上のタイルが下へずれる', () => {
     let c = ok(placePiece(emptyCourse(), 'support', 0, 0));
     c = ok(placePiece(c, 'slope', 0, 0));
     c = ok(placePiece(c, 'straight', 0, 0));

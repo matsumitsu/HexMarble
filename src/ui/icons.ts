@@ -3,7 +3,7 @@ import { getPart, type PartType } from '../core/parts';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
-/** パーツ定義の経路データから、パレット用のアイコン（SVG）を生成する */
+/** タイル定義の経路データから、パレット用のアイコン（SVG）を生成する */
 export function partIconSvg(type: PartType, size = 40): string {
   const def = getPart(type);
   const s = 0.95;

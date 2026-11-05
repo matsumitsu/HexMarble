@@ -6,7 +6,7 @@ import { getPart, type PartType, type PortId } from './parts';
 export interface WorldPort {
   /** 回転後の位置（辺 0〜5 / up / down） */
   id: PortId;
-  /** 回転前（パーツ定義上）の位置 */
+  /** 回転前（タイル定義上）の位置 */
   localId: PortId;
   /** 絶対レベル（設置レベル + 接続口の相対高さ） */
   level: number;
@@ -95,7 +95,7 @@ export function analyzeConnections(course: Course): { connections: Connection[];
   return { connections, openPorts };
 }
 
-/** 2つのパーツが直接つながっているか */
+/** 2つのタイルが直接つながっているか */
 export function areConnected(course: Course, aId: number, bId: number): boolean {
   const index = new CourseIndex(course);
   const a = course.pieces.find((p) => p.id === aId);
@@ -103,7 +103,7 @@ export function areConnected(course: Course, aId: number, bId: number): boolean 
   return worldPorts(a).some((port) => findConnection(index, a, port)?.piece.id === bId);
 }
 
-/** 仮に置いたとき、既存のパーツと1つ以上つながるか（配置ハイライト用） */
+/** 仮に置いたとき、既存のタイルと1つ以上つながるか（配置ハイライト用） */
 export function placementConnects(
   index: CourseIndex,
   type: PartType,

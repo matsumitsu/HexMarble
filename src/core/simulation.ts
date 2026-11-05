@@ -23,7 +23,7 @@ export interface SimEvent {
   reason?: FailReason;
 }
 
-/** パーツの経路をワールド座標に変換する */
+/** タイルの経路をワールド座標に変換する */
 export function worldRoutes(piece: Piece): WorldRoute[] {
   const { x: cx, z: cz } = axialToWorld(piece.q, piece.r);
   const baseY = piece.level * LEVEL_HEIGHT;
@@ -42,7 +42,7 @@ export function worldRoutes(piece: Piece): WorldRoute[] {
 }
 
 /**
- * 経路に沿った決定的な球の運動。
+ * 経路に沿った決定的なマーブルの運動。
  * 速度は「高低差による加速（-g·dy/ds）」と「一定の減衰（friction）」だけで決まる。
  * 固定タイムステップで積分するので、同じコースなら毎回同じ結果になる。
  */
@@ -55,15 +55,15 @@ export class Simulation {
   goalTime: number | null = null;
   /** 経路に沿った速さ */
   speed = 0;
-  /** 現在のパーツ */
+  /** 現在のタイル */
   piece: Piece | null = null;
   route: WorldRoute | null = null;
   /** 経路上の弧長位置 */
   s = 0;
-  /** 分岐パーツの切り替えカウンタ（pieceId → 通過回数） */
+  /** 分岐タイルの切り替えカウンタ（pieceId → 通過回数） */
   readonly toggles = new Map<number, number>();
   readonly events: SimEvent[] = [];
-  /** 球の中心位置 */
+  /** マーブルの中心位置 */
   position: Vec3 = v3(0, 0, 0);
   /** 落下中の速度ベクトル */
   private fallVel: Vec3 = v3(0, 0, 0);
@@ -150,7 +150,7 @@ export class Simulation {
     }
     this.s += this.speed * dt;
 
-    // 境界を越えたら接続先の経路へ乗り継ぐ（1ステップで複数パーツを越える場合も処理）
+    // 境界を越えたら接続先の経路へ乗り継ぐ（1ステップで複数タイルを越える場合も処理）
     while (this.route && this.s >= this.route.poly.length) {
       const cur = this.route;
       if (cur.to === 'goal') {

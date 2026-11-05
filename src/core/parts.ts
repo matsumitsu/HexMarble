@@ -8,16 +8,16 @@ export type PortId = Side | 'up' | 'down';
 export interface PortDef {
   /** 接続口の位置（回転前のローカル） */
   id: PortId;
-  /** 接続口の高さ（パーツの設置レベルからの相対レベル） */
+  /** 接続口の高さ（タイルの設置レベルからの相対レベル） */
   h: number;
 }
 
 export interface RouteDef {
-  /** 入口。'start' はスタートパーツの発射位置 */
+  /** 入口。'start' はスタートタイルの発射位置 */
   from: PortId | 'start';
-  /** 出口。'goal' はゴールで球を受け止める位置 */
+  /** 出口。'goal' はゴールでマーブルを受け止める位置 */
   to: PortId | 'goal';
-  /** 球の中心が通る経路点列（回転前のローカル座標。y はパーツ底面からの高さ） */
+  /** マーブルの中心が通る経路点列（回転前のローカル座標。y はタイル底面からの高さ） */
   points: Vec3[];
 }
 
@@ -44,7 +44,7 @@ export interface PartDef {
   span: number;
   ports: PortDef[];
   /**
-   * 経路。同じ from を持つ経路が複数ある場合、球が通るたびに交互に選ばれる（分岐）。
+   * 経路。同じ from を持つ経路が複数ある場合、マーブルが通るたびに交互に選ばれる（分岐）。
    */
   routes: RouteDef[];
   /** true のとき地面か支柱の上にしか置けない */
@@ -55,7 +55,7 @@ export interface PartDef {
 
 const SAMPLES = 24;
 
-/** 接続口のローカル位置（球の中心が通過する点） */
+/** 接続口のローカル位置（マーブルの中心が通過する点） */
 export function portLocalPosition(port: PortDef): Vec3 {
   if (port.id === 'up' || port.id === 'down') return v3(0, port.h * LEVEL_HEIGHT, 0);
   const m = edgeMidpoint(port.id);
@@ -91,7 +91,7 @@ export const PARTS: Record<PartType, PartDef> = {
   start: {
     type: 'start',
     name: 'スタート',
-    description: '球の発射台。辺0（矢印の向き）へ初速つきで球を送り出す',
+    description: 'マーブルの発射台。辺0（矢印の向き）へ初速つきでマーブルを送り出す',
     color: 0xf2a541,
     span: 1,
     ports: sidePorts([0]),
@@ -156,7 +156,7 @@ export const PARTS: Record<PartType, PartDef> = {
   splitter: {
     type: 'splitter',
     name: '分岐',
-    description: '辺0または上から入った球を、通るたびに辺2と辺4へ交互に振り分ける',
+    description: '辺0または上から入ったマーブルを、通るたびに辺2と辺4へ交互に振り分ける',
     color: 0xe55381,
     span: 1,
     ports: [...sidePorts([0, 2, 4]), { id: 'up', h: 1 }],
@@ -172,7 +172,7 @@ export const PARTS: Record<PartType, PartDef> = {
   drop: {
     type: 'drop',
     name: '落下口',
-    description: '辺0または上から入った球を、真下のパーツへ落とす',
+    description: '辺0または上から入ったマーブルを、真下のタイルへ落とす',
     color: 0xc77dff,
     span: 1,
     ports: [{ id: 0, h: 0 }, { id: 'up', h: 1 }, { id: 'down', h: 0 }],
@@ -184,7 +184,7 @@ export const PARTS: Record<PartType, PartDef> = {
   goal: {
     type: 'goal',
     name: 'ゴール',
-    description: 'どの辺からでも、また上からでも球を受け止める',
+    description: 'どの辺からでも、また上からでもマーブルを受け止める',
     color: 0xffd23f,
     span: 1,
     ports: [...sidePorts(ALL_SIDES), { id: 'up', h: 1 }],

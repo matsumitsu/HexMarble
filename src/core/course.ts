@@ -7,7 +7,7 @@ export interface Piece {
   type: PartType;
   q: number;
   r: number;
-  /** 設置レベル（パーツ底面の高さ） */
+  /** 設置レベル（タイル底面の高さ） */
   level: number;
   /** 60°刻みの回転（0〜5） */
   rot: number;
@@ -38,7 +38,7 @@ export function getStack(course: Course, q: number, r: number): Piece[] {
   return course.pieces.filter((p) => p.q === q && p.r === r).sort((a, b) => a.level - b.level);
 }
 
-/** セルの最上部レベル（次にパーツを置けるレベル） */
+/** セルの最上部レベル（次にタイルを置けるレベル） */
 export function stackTop(course: Course, q: number, r: number): number {
   let top = 0;
   for (const p of course.pieces) {
@@ -47,7 +47,7 @@ export function stackTop(course: Course, q: number, r: number): number {
   return top;
 }
 
-/** 指定セルの、あるレベルの真下にあるパーツ */
+/** 指定セルの、あるレベルの真下にあるタイル */
 function pieceBelow(course: Course, q: number, r: number, level: number): Piece | undefined {
   return getStack(course, q, r).find((p) => p.level + getPart(p.type).span === level);
 }
@@ -74,10 +74,10 @@ export function placePiece(course: Course, type: PartType, q: number, r: number,
   return { ok: true, course: { pieces: [...course.pieces, piece], nextId: course.nextId + 1 }, pieceId: piece.id };
 }
 
-/** 削除すると、その上に積まれたパーツは下へずれる */
+/** 削除すると、その上に積まれたタイルは下へずれる */
 export function removePiece(course: Course, id: number): EditResult {
   const target = getPiece(course, id);
-  if (!target) return { ok: false, reason: 'パーツが見つかりません' };
+  if (!target) return { ok: false, reason: 'タイルが見つかりません' };
   const span = getPart(target.type).span;
   const pieces = course.pieces
     .filter((p) => p.id !== id)
@@ -87,15 +87,15 @@ export function removePiece(course: Course, id: number): EditResult {
 
 export function rotatePiece(course: Course, id: number, delta = 1): EditResult {
   const target = getPiece(course, id);
-  if (!target) return { ok: false, reason: 'パーツが見つかりません' };
+  if (!target) return { ok: false, reason: 'タイルが見つかりません' };
   const pieces = course.pieces.map((p) => (p.id === id ? { ...p, rot: mod6(p.rot + delta) } : p));
   return { ok: true, course: { ...course, pieces }, pieceId: id };
 }
 
-/** 真下に支柱を1つ差し込み、パーツ（と上に積まれたもの）を1レベル上げる */
+/** 真下に支柱を1つ差し込み、タイル（と上に積まれたもの）を1レベル上げる */
 export function raisePiece(course: Course, id: number): EditResult {
   const target = getPiece(course, id);
-  if (!target) return { ok: false, reason: 'パーツが見つかりません' };
+  if (!target) return { ok: false, reason: 'タイルが見つかりません' };
   if (stackTop(course, target.q, target.r) > MAX_LEVEL) return { ok: false, reason: `高さの上限（レベル${MAX_LEVEL}）です` };
   if (target.level > 0) {
     const below = pieceBelow(course, target.q, target.r, target.level);
@@ -108,10 +108,10 @@ export function raisePiece(course: Course, id: number): EditResult {
   return { ok: true, course: { pieces: [...pieces, support], nextId: course.nextId + 1 }, pieceId: id };
 }
 
-/** 真下の支柱を1つ取り除き、パーツ（と上に積まれたもの）を1レベル下げる */
+/** 真下の支柱を1つ取り除き、タイル（と上に積まれたもの）を1レベル下げる */
 export function lowerPiece(course: Course, id: number): EditResult {
   const target = getPiece(course, id);
-  if (!target) return { ok: false, reason: 'パーツが見つかりません' };
+  if (!target) return { ok: false, reason: 'タイルが見つかりません' };
   if (target.level === 0) return { ok: false, reason: 'これ以上下げられません' };
   const below = pieceBelow(course, target.q, target.r, target.level);
   if (!below || below.type !== 'support') return { ok: false, reason: '真下が支柱でないため、高さを下げられません' };

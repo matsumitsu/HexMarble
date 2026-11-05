@@ -95,8 +95,8 @@ export class Ui {
     );
 
     // パレット
-    this.palette = h('aside', { className: 'panel palette' }, h('h2', {}, 'パーツ'));
-    const selectBtn = this.toolButton('select', '<span class="glyph">⌖</span>', '選択', 'Esc', '置いたパーツを選択する');
+    this.palette = h('aside', { className: 'panel palette' }, h('h2', {}, 'タイル'));
+    const selectBtn = this.toolButton('select', '<span class="glyph">⌖</span>', '選択', 'Esc', '置いたタイルを選択する');
     this.palette.append(selectBtn);
     PALETTE_ORDER.forEach((type, i) => {
       const def = getPart(type);
@@ -111,7 +111,7 @@ export class Ui {
     this.inspector = h(
       'aside',
       { className: 'panel inspector' },
-      h('h2', {}, '選択中のパーツ'),
+      h('h2', {}, '選択中のタイル'),
       this.inspectorBody,
       h(
         'div',
