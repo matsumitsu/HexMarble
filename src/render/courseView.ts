@@ -4,6 +4,7 @@ import { analyzeConnections } from '../core/connections';
 import type { Course, Piece } from '../core/course';
 import { axialToWorld, cellsInRadius, hexCorner, type Axial } from '../core/hex';
 import { getPart, portLocalPosition, type PartType } from '../core/parts';
+import { Fireworks } from './fireworks';
 import { createGhostMesh, createPartMesh, hexShape } from './meshes';
 
 export type CellHighlight = 'none' | 'placeable' | 'connects' | 'blocked';
@@ -39,9 +40,7 @@ export class CourseView {
   private readonly hover: THREE.LineLoop;
   private readonly portMarkers: THREE.InstancedMesh;
   readonly ball: THREE.Mesh;
-  private readonly particles: THREE.Points;
-  private particleVel: Float32Array;
-  private particleLife = 0;
+  private readonly fireworks = new Fireworks();
   private time = 0;
 
   constructor(scene: THREE.Scene) {
@@ -94,17 +93,7 @@ export class CourseView {
     this.ball.visible = false;
     this.root.add(this.ball);
 
-    const N = 240;
-    const pg = new THREE.BufferGeometry();
-    pg.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(N * 3), 3));
-    const colors = new Float32Array(N * 3);
-    const palette = [0xffd23f, 0x3fb8af, 0xe55381, 0x7f7eff, 0xffffff].map((c) => new THREE.Color(c));
-    for (let i = 0; i < N; i++) palette[i % palette.length].toArray(colors, i * 3);
-    pg.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    this.particles = new THREE.Points(pg, new THREE.PointsMaterial({ size: 0.12, vertexColors: true, transparent: true }));
-    this.particles.visible = false;
-    this.particleVel = new Float32Array(N * 3);
-    this.root.add(this.particles);
+    this.root.add(this.fireworks.points);
   }
 
   /** コースの変化分だけメッシュを作り直す */
@@ -216,27 +205,14 @@ export class CourseView {
     if (pos) this.ball.position.set(pos.x, pos.y, pos.z);
   }
 
-  burst(at: THREE.Vector3): void {
-    const pos = this.particles.geometry.getAttribute('position') as THREE.BufferAttribute;
-    // 決定的である必要はない演出だが、見た目を毎回揃えるため擬似乱数を使う
-    let seed = 1234567;
-    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < pos.count; i++) {
-      pos.setXYZ(i, at.x, at.y, at.z);
-      const a = rnd() * Math.PI * 2;
-      const s = 1 + rnd() * 2.5;
-      this.particleVel[i * 3] = Math.cos(a) * s * 0.6;
-      this.particleVel[i * 3 + 1] = 3 + rnd() * 3;
-      this.particleVel[i * 3 + 2] = Math.sin(a) * s * 0.6;
-    }
-    pos.needsUpdate = true;
-    this.particleLife = 2;
-    this.particles.visible = true;
+  /** ゴールタイルから小さな花火を打ち上げる */
+  launchFireworks(piece: Piece): void {
+    const w = axialToWorld(piece.q, piece.r);
+    this.fireworks.launch(new THREE.Vector3(w.x, (piece.level + getPart(piece.type).span) * LEVEL_HEIGHT, w.z));
   }
 
   clearEffects(): void {
-    this.particleLife = 0;
-    this.particles.visible = false;
+    this.fireworks.clear();
   }
 
   /** 毎フレームのアニメーション */
@@ -251,22 +227,7 @@ export class CourseView {
         gem.position.y = 0.87 + Math.sin(this.time * 2) * 0.05;
       }
     }
-    if (this.particleLife > 0) {
-      this.particleLife -= dt;
-      const pos = this.particles.geometry.getAttribute('position') as THREE.BufferAttribute;
-      for (let i = 0; i < pos.count; i++) {
-        this.particleVel[i * 3 + 1] -= 6 * dt;
-        pos.setXYZ(
-          i,
-          pos.getX(i) + this.particleVel[i * 3] * dt,
-          pos.getY(i) + this.particleVel[i * 3 + 1] * dt,
-          pos.getZ(i) + this.particleVel[i * 3 + 2] * dt,
-        );
-      }
-      pos.needsUpdate = true;
-      (this.particles.material as THREE.PointsMaterial).opacity = Math.min(1, this.particleLife);
-      if (this.particleLife <= 0) this.particles.visible = false;
-    }
+    this.fireworks.update(dt);
   }
 }
 
