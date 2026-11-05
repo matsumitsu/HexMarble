@@ -1,4 +1,4 @@
-import { getPart, PALETTE_ORDER, type PartType } from '../core/parts';
+import { getPart, PALETTE_KEYS, PALETTE_ORDER, type PartType } from '../core/parts';
 import type { Piece } from '../core/course';
 import { partIconSvg } from './icons';
 
@@ -100,7 +100,7 @@ export class Ui {
     this.palette.append(selectBtn);
     PALETTE_ORDER.forEach((type, i) => {
       const def = getPart(type);
-      this.palette.append(this.toolButton(type, partIconSvg(type, 34), def.name, String(i + 1), def.description));
+      this.palette.append(this.toolButton(type, partIconSvg(type, 34), def.name, PALETTE_KEYS[i] ?? '', def.description));
     });
     this.palette.append(
       h('p', { className: 'hint', innerHTML: '<b>R</b> 回転（<b>Shift</b>で逆）<br><b>E</b> レベルを上げる（<b>Shift</b>で下げる）<br><b>Q</b> スポイト / 設置をやめる<br><b>右長押し</b> タイルを削除<br><b>緑</b>のセルは既存のコースとつながる場所' }),

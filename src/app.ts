@@ -18,7 +18,7 @@ import {
 import { History } from './core/history';
 import { mod6, worldToAxial, type Axial } from './core/hex';
 import { AutoLauncher, type LaunchResult } from './core/launcher';
-import { getPart, PALETTE_ORDER, type PartType } from './core/parts';
+import { getPart, PALETTE_KEYS, PALETTE_ORDER, type PartType } from './core/parts';
 import { sampleCourse } from './core/sampleCourse';
 import { FAIL_MESSAGES } from './core/simulation';
 import { CourseView, type CellHighlight } from './render/courseView';
@@ -508,8 +508,8 @@ export class App {
         this.selectedId = null;
         this.setTool(null);
         this.onCourseChanged();
-      } else if (/^[1-9]$/.test(key)) {
-        const t = PALETTE_ORDER[Number(key) - 1];
+      } else if (PALETTE_KEYS.includes(key)) {
+        const t = PALETTE_ORDER[PALETTE_KEYS.indexOf(key)];
         if (t) this.setTool(this.tool === t ? null : t);
       }
     });

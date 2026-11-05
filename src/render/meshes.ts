@@ -224,6 +224,15 @@ const BUILDERS: Record<PartType, Builder> = {
   curve120(g) {
     g.add(basePlate('curve120'));
   },
+  cross(g) {
+    g.add(basePlate('cross'));
+  },
+  merge(g) {
+    g.add(basePlate('merge'));
+  },
+  uturn(g) {
+    g.add(basePlate('uturn'));
+  },
   slope(g) {
     g.add(basePlate('slope'));
   },

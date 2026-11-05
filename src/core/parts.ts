@@ -1,4 +1,4 @@
-import { LEVEL_HEIGHT, TRACK_Y } from './constants';
+import { APOTHEM, LEVEL_HEIGHT, TRACK_Y } from './constants';
 import { edgeMidpoint, type Side } from './hex';
 import { joinPaths, lineSegment, quadBezier, v3, type Vec3 } from './path';
 
@@ -26,6 +26,9 @@ export type PartType =
   | 'straight'
   | 'curve60'
   | 'curve120'
+  | 'cross'
+  | 'merge'
+  | 'uturn'
   | 'slope'
   | 'splitter'
   | 'drop'
@@ -80,6 +83,21 @@ function twoWay(a: Side, b: Side, pts: Vec3[]): RouteDef[] {
   ];
 }
 
+/**
+ * 辺0から入り、タイルの中で輪を描いて辺0へ戻る涙形の経路。
+ * 辺の中点から円への接線2本と、円の奥側の弧でできる。
+ */
+function teardrop(): Vec3[] {
+  const R = 0.42;
+  const cx = -0.12;
+  const alpha = Math.acos(R / (APOTHEM - cx));
+  const arcN = 36;
+  const at = (a: number) => v3(cx + R * Math.cos(a), TRACK_Y, R * Math.sin(a));
+  const arc: Vec3[] = [];
+  for (let i = 1; i < arcN; i++) arc.push(at(alpha + ((2 * Math.PI - 2 * alpha) * i) / arcN));
+  return [...lineSegment(edge(0), at(alpha), 8), ...arc, ...lineSegment(at(-alpha), edge(0), 8)];
+}
+
 const sidePorts = (sides: Side[], h = 0): PortDef[] => sides.map((id) => ({ id, h }));
 
 const ALL_SIDES: Side[] = [0, 1, 2, 3, 4, 5];
@@ -127,6 +145,37 @@ export const PARTS: Record<PartType, PartDef> = {
     span: 1,
     ports: sidePorts([0, 1]),
     routes: twoWay(0, 1, edgeToEdge(0, 1)),
+  },
+  cross: {
+    type: 'cross',
+    name: '交差',
+    description: '2本の直線が交わる。どちらの向きから入っても、反対側へまっすぐ抜ける',
+    color: 0x80ed99,
+    span: 1,
+    ports: sidePorts([0, 2, 3, 5]),
+    routes: [...twoWay(0, 3, edgeToEdge(0, 3)), ...twoWay(2, 5, edgeToEdge(2, 5))],
+  },
+  merge: {
+    type: 'merge',
+    name: '合流',
+    description: '辺2・辺3・辺4のどこから入ったマーブルも、辺0へまとめて送り出す（一方通行）',
+    color: 0xff8c61,
+    span: 1,
+    ports: sidePorts([0, 2, 3, 4]),
+    routes: [
+      { from: 2, to: 0, points: edgeToEdge(2, 0) },
+      { from: 3, to: 0, points: edgeToEdge(3, 0) },
+      { from: 4, to: 0, points: edgeToEdge(4, 0) },
+    ],
+  },
+  uturn: {
+    type: 'uturn',
+    name: 'Uターン',
+    description: '辺0から入ったマーブルを、タイルの中で一周させて同じ辺へ送り返す',
+    color: 0xff99c8,
+    span: 1,
+    ports: sidePorts([0]),
+    routes: [{ from: 0, to: 0, points: teardrop() }],
   },
   slope: {
     type: 'slope',
@@ -192,7 +241,13 @@ export const PALETTE_ORDER: PartType[] = [
   'splitter',
   'drop',
   'goal',
+  'cross',
+  'merge',
+  'uturn',
 ];
+
+/** パレットの各タイルを選ぶキー（PALETTE_ORDER と同じ順） */
+export const PALETTE_KEYS: readonly string[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-'];
 
 export function isPartType(v: unknown): v is PartType {
   return typeof v === 'string' && Object.prototype.hasOwnProperty.call(PARTS, v);
