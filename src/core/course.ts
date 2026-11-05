@@ -52,26 +52,46 @@ function pieceBelow(course: Course, q: number, r: number, level: number): Piece 
   return getStack(course, q, r).find((p) => p.level + getPart(p.type).span === level);
 }
 
-export function canPlace(course: Course, type: PartType, q: number, r: number): { ok: true; level: number } | { ok: false; reason: string } {
+/**
+ * 配置できるか判定する。minLevel を指定すると、セルの最上部がそれより低い場合は
+ * 不足分を支柱で埋めて minLevel に置く（supports がその数）。
+ */
+export function canPlace(
+  course: Course,
+  type: PartType,
+  q: number,
+  r: number,
+  minLevel = 0,
+): { ok: true; level: number; supports: number } | { ok: false; reason: string } {
   if (!inGrid(q, r)) return { ok: false, reason: 'グリッドの外です' };
   const def = getPart(type);
   if (def.unique && course.pieces.some((p) => p.type === type)) {
     return { ok: false, reason: `${def.name}は1つしか置けません` };
   }
-  const level = stackTop(course, q, r);
+  const top = stackTop(course, q, r);
+  const level = Math.max(top, minLevel);
+  const supports = level - top;
   if (level + def.span - 1 > MAX_LEVEL) return { ok: false, reason: `高さの上限（レベル${MAX_LEVEL}）を超えます` };
-  if (def.groundOrSupportOnly && level > 0) {
-    const below = pieceBelow(course, q, r, level);
-    if (below && below.type !== 'support') return { ok: false, reason: `${def.name}は地面か支柱の上にしか置けません` };
+  if ((def.groundOrSupportOnly || supports > 0) && top > 0) {
+    const below = pieceBelow(course, q, r, top);
+    if (below && below.type !== 'support') {
+      return { ok: false, reason: supports > 0 ? '支柱以外のタイルの上には支柱を積めません' : `${def.name}は地面か支柱の上にしか置けません` };
+    }
   }
-  return { ok: true, level };
+  return { ok: true, level, supports };
 }
 
-export function placePiece(course: Course, type: PartType, q: number, r: number, rot = 0): EditResult {
-  const check = canPlace(course, type, q, r);
+/** タイルを置く。minLevel までの不足分は支柱を自動で積む */
+export function placePiece(course: Course, type: PartType, q: number, r: number, rot = 0, minLevel = 0): EditResult {
+  const check = canPlace(course, type, q, r, minLevel);
   if (!check.ok) return check;
-  const piece: Piece = { id: course.nextId, type, q, r, level: check.level, rot: mod6(rot) };
-  return { ok: true, course: { pieces: [...course.pieces, piece], nextId: course.nextId + 1 }, pieceId: piece.id };
+  const pieces = [...course.pieces];
+  let nextId = course.nextId;
+  const base = check.level - check.supports;
+  for (let i = 0; i < check.supports; i++) pieces.push({ id: nextId++, type: 'support', q, r, level: base + i, rot: 0 });
+  const piece: Piece = { id: nextId++, type, q, r, level: check.level, rot: mod6(rot) };
+  pieces.push(piece);
+  return { ok: true, course: { pieces, nextId }, pieceId: piece.id };
 }
 
 /** 削除すると、その上に積まれたタイルは下へずれる */

@@ -144,4 +144,26 @@ describe('保存形式', () => {
     ).toThrow(/重なって/);
     expect(() => parseCourse(JSON.stringify({ ...base, pieces: [{ type: 'straight', q: 0, r: 0, level: 2, rot: 0 }] }))).toThrow(/宙に浮/);
   });
+
+  it('設置レベルを指定すると、不足分の支柱を自動で積んで置く', () => {
+    const c = ok(placePiece(emptyCourse(), 'straight', 0, 0, 2, 3));
+    const placed = c.pieces.find((p) => p.type === 'straight')!;
+    expect(placed.level).toBe(3);
+    expect(placed.rot).toBe(2);
+    expect(c.pieces.filter((p) => p.type === 'support').map((p) => p.level).sort()).toEqual([0, 1, 2]);
+    expect(stackTop(c, 0, 0)).toBe(4);
+  });
+
+  it('設置レベルがセルの最上部より低ければ、最上部に置く', () => {
+    let c = ok(placePiece(emptyCourse(), 'support', 0, 0));
+    c = ok(placePiece(c, 'support', 0, 0));
+    const check = canPlace(c, 'straight', 0, 0, 1);
+    expect(check).toEqual({ ok: true, level: 2, supports: 0 });
+  });
+
+  it('支柱以外のタイルの上には、支柱を自動で積めない', () => {
+    const c = ok(placePiece(emptyCourse(), 'straight', 0, 0));
+    expect(canPlace(c, 'straight', 0, 0, 3).ok).toBe(false);
+    expect(canPlace(c, 'straight', 0, 0).ok).toBe(true);
+  });
 });
