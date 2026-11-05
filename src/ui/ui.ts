@@ -103,7 +103,7 @@ export class Ui {
       this.palette.append(this.toolButton(type, partIconSvg(type, 34), def.name, String(i + 1), def.description));
     });
     this.palette.append(
-      h('p', { className: 'hint', innerHTML: '<b>R</b> 回転（<b>Shift</b>で逆）<br><b>Q</b> スポイト / 設置をやめる<br><b>右長押し</b> タイルを削除<br><b>緑</b>のセルは既存のコースとつながる場所' }),
+      h('p', { className: 'hint', innerHTML: '<b>R</b> 回転（<b>Shift</b>で逆）<br><b>E</b> レベルを上げる（<b>Shift</b>で下げる）<br><b>Q</b> スポイト / 設置をやめる<br><b>右長押し</b> タイルを削除<br><b>緑</b>のセルは既存のコースとつながる場所' }),
     );
 
     // インスペクタ
@@ -118,8 +118,8 @@ export class Ui {
         { className: 'actions' },
         button('⟲', '左に60°回転 (Shift+R)', () => H.onRotate(1)),
         button('⟳', '右に60°回転 (R)', () => H.onRotate(-1)),
-        button('▲ 上げる', '支柱を差し込んで1レベル上げる (PageUp / ])', H.onRaise),
-        button('▼ 下げる', '真下の支柱を外して1レベル下げる (PageDown / [)', H.onLower),
+        button('▲ 上げる', '支柱を差し込んで1レベル上げる (E / PageUp / ])', H.onRaise),
+        button('▼ 下げる', '真下の支柱を外して1レベル下げる (Shift+E / PageDown / [)', H.onLower),
         button('削除', '削除 (Delete)', H.onDelete, 'danger'),
       ),
     );
@@ -148,7 +148,7 @@ export class Ui {
     });
     const help = h('div', {
       className: 'help',
-      innerHTML: '左ドラッグ: 回転 ・ 右ドラッグ: パン ・ ホイール: ズーム ・ 右長押し: 削除 ・ Q: スポイト / 設置終了 ・ Tab: 編集/実行 ・ Ctrl+Z / Ctrl+Y: 元に戻す / やり直す',
+      innerHTML: 'WASD: 移動 ・ 左ドラッグ: 回転 ・ 右ドラッグ: パン ・ ホイール: ズーム ・ E / Shift+E: レベル上下 ・ 右長押し: 削除 ・ Q: スポイト / 設置終了 ・ Tab: 編集/実行 ・ Ctrl+Z / Ctrl+Y: 元に戻す / やり直す',
     });
     root.append(header, h('main', { className: 'stage' }, this.viewport, this.palette, this.inspector, this.runPanel, this.holdRing, this.toastEl, help));
   }
