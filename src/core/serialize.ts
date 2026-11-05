@@ -43,7 +43,9 @@ export function parseCourse(text: string): Course {
   const pieces: Piece[] = [];
   const occupied = new Set<string>();
   let starts = 0;
-  obj.pieces.forEach((raw, i) => {
+  // 旧バージョンの支柱は廃止したので読み飛ばす（ほかのタイルの高さはそのまま）
+  const raws = obj.pieces.filter((raw) => !(raw && typeof raw === 'object' && (raw as { type?: unknown }).type === 'support'));
+  raws.forEach((raw, i) => {
     const p = raw as Partial<Piece>;
     const where = `${i + 1}番目のタイル`;
     if (!p || typeof p !== 'object') throw new Error(`${where}が不正です`);
@@ -62,10 +64,5 @@ export function parseCourse(text: string): Course {
     pieces.push({ id: i + 1, type: p.type, q: p.q, r: p.r, level: p.level, rot: mod6(p.rot) });
   });
   if (starts > 1) throw new Error('スタートが複数あります');
-  // 宙に浮いたタイルがないか（積み上げが連続しているか）
-  for (const p of pieces) {
-    if (p.level === 0) continue;
-    if (!occupied.has(`${cellKey(p.q, p.r)}@${p.level - 1}`)) throw new Error('宙に浮いたタイルがあります');
-  }
   return { pieces, nextId: pieces.length + 1 };
 }

@@ -27,7 +27,6 @@ export type PartType =
   | 'curve60'
   | 'curve120'
   | 'slope'
-  | 'support'
   | 'splitter'
   | 'drop'
   | 'goal';
@@ -47,8 +46,6 @@ export interface PartDef {
    * 経路。同じ from を持つ経路が複数ある場合、マーブルが通るたびに交互に選ばれる（分岐）。
    */
   routes: RouteDef[];
-  /** true のとき地面か支柱の上にしか置けない */
-  groundOrSupportOnly?: boolean;
   /** コースに1つだけ置ける */
   unique?: boolean;
 }
@@ -143,16 +140,6 @@ export const PARTS: Record<PartType, PartDef> = {
     ],
     routes: twoWay(0, 3, lineSegment(edge(0, 1), edge(3, 0), SAMPLES)),
   },
-  support: {
-    type: 'support',
-    name: '支柱',
-    description: '高さを1レベル上げる土台。重ねて置ける',
-    color: 0x8d99ae,
-    span: 1,
-    ports: [],
-    routes: [],
-    groundOrSupportOnly: true,
-  },
   splitter: {
     type: 'splitter',
     name: '分岐',
@@ -202,7 +189,6 @@ export const PALETTE_ORDER: PartType[] = [
   'curve60',
   'curve120',
   'slope',
-  'support',
   'splitter',
   'drop',
   'goal',

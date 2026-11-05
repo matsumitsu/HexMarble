@@ -4,7 +4,7 @@ import { hexCorner } from '../src/core/hex';
 import { PARTS, type PartType } from '../src/core/parts';
 import { DROP_HOLE_RADIUS, GROOVE_RADIUS, PLATE_TOP, surfaceHeight } from '../src/render/tileSurface';
 
-const trackTypes = (Object.keys(PARTS) as PartType[]).filter((t) => t !== 'support');
+const trackTypes = Object.keys(PARTS) as PartType[];
 
 describe('タイルの土台とハーフパイプ', () => {
   it('土台の厚みは占有する高さの半分', () => {
