@@ -36,6 +36,9 @@ export class CourseView {
   };
   private ghost: THREE.Group | null = null;
   private ghostKey = '';
+  /** 設置レベルまで自動で積む支柱のゴースト */
+  private readonly ghostSupports = new THREE.Group();
+  private ghostSupportsKey = '';
   private readonly selection: THREE.LineLoop;
   private readonly hover: THREE.LineLoop;
   private readonly portMarkers: THREE.InstancedMesh;
@@ -156,7 +159,23 @@ export class CourseView {
     if (this.tiles.instanceColor) this.tiles.instanceColor.needsUpdate = true;
   }
 
-  setGhost(type: PartType | null, cell: Axial | null, level: number, rot: number, ok: boolean): void {
+  setGhost(type: PartType | null, cell: Axial | null, level: number, rot: number, ok: boolean, supports = 0): void {
+    const n = type && cell && ok ? supports : 0;
+    const supportsKey = `${n}`;
+    if (supportsKey !== this.ghostSupportsKey) {
+      this.ghostSupports.clear();
+      for (let i = 0; i < n; i++) {
+        const g = createGhostMesh('support', this.ghostMats.ok);
+        g.position.y = (i - n) * LEVEL_HEIGHT;
+        this.ghostSupports.add(g);
+      }
+      if (n > 0 && !this.ghostSupports.parent) this.root.add(this.ghostSupports);
+      this.ghostSupportsKey = supportsKey;
+    }
+    if (n > 0 && cell) {
+      const w = axialToWorld(cell.q, cell.r);
+      this.ghostSupports.position.set(w.x, level * LEVEL_HEIGHT + 0.01, w.z);
+    }
     const key = type && cell ? `${type}|${ok}` : '';
     if (key !== this.ghostKey) {
       if (this.ghost) this.root.remove(this.ghost);

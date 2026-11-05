@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GRID_RADIUS, HEX_SIZE } from './core/constants';
+import { GRID_RADIUS, HEX_SIZE, MAX_LEVEL } from './core/constants';
 import { CourseIndex, placementConnects } from './core/connections';
 import {
   canPlace,
@@ -40,6 +40,8 @@ export class App {
   private mode: Mode = 'edit';
   private tool: PartType | null = null;
   private ghostRot = 0;
+  /** 設置モードで E / Shift+E で指定した設置レベル（null ならセルの最上部） */
+  private placeLevel: number | null = null;
   private selectedId: number | null = null;
   private hoverCell: Axial | null = null;
   private hoverPieceId: number | null = null;
@@ -171,6 +173,17 @@ export class App {
 
   /** E キー。カーソル下のタイル（なければ選択中のタイル）を1レベル上げる / 下げる */
   private levelKey(up: boolean): void {
+    if (this.tool) {
+      const cell = this.hoverCell;
+      const cur = cell ? this.ghostLevel(cell) : (this.placeLevel ?? 0);
+      const next = Math.min(MAX_LEVEL, Math.max(0, cur + (up ? 1 : -1)));
+      this.placeLevel = next;
+      this.highlightsDirty = true;
+      this.updateGhost();
+      const shown = cell ? this.ghostLevel(cell) : next;
+      this.ui.toast(shown > next ? `設置レベル ${next}（このセルはレベル${shown}より下に置けません）` : `設置レベル ${next}`);
+      return;
+    }
     const target = this.hoveredPiece ?? this.selected;
     if (!target) return;
     this.apply(up ? raisePiece(this.course, target.id) : lowerPiece(this.course, target.id), false);
@@ -219,6 +232,9 @@ export class App {
     if (!p) return;
     this.ghostRot = p.rot;
     this.setTool(p.type);
+    this.placeLevel = p.level;
+    this.highlightsDirty = true;
+    this.updateGhost();
     this.ui.toast(`${getPart(p.type).name}を拾いました`);
   }
 
@@ -233,6 +249,7 @@ export class App {
     if (this.mode !== 'edit') this.setMode('edit');
     this.tool = tool;
     if (tool) this.selectedId = null;
+    else this.placeLevel = null;
     this.highlightsDirty = true;
     this.view.setSelection(null);
     this.updateGhost();
@@ -263,10 +280,15 @@ export class App {
     }
     const index = new CourseIndex(this.course);
     this.view.setHighlights(({ q, r }): CellHighlight => {
-      const check = canPlace(this.course, tool, q, r);
+      const check = canPlace(this.course, tool, q, r, this.placeLevel ?? 0);
       if (!check.ok) return 'blocked';
       return placementConnects(index, tool, q, r, check.level, this.ghostRot) ? 'connects' : 'placeable';
     });
+  }
+
+  /** 設置モードでカーソル位置に置くときのレベル */
+  private ghostLevel(cell: Axial): number {
+    return Math.max(stackTop(this.course, cell.q, cell.r), this.placeLevel ?? 0);
   }
 
   private updateGhost(): void {
@@ -279,9 +301,9 @@ export class App {
       else this.view.setHover(cell, cell ? stackTop(this.course, cell.q, cell.r) : 0);
       return;
     }
-    const check = canPlace(this.course, this.tool, cell.q, cell.r);
-    const level = check.ok ? check.level : stackTop(this.course, cell.q, cell.r);
-    this.view.setGhost(this.tool, cell, level, this.ghostRot, check.ok);
+    const check = canPlace(this.course, this.tool, cell.q, cell.r, this.placeLevel ?? 0);
+    const level = check.ok ? check.level : this.ghostLevel(cell);
+    this.view.setGhost(this.tool, cell, level, this.ghostRot, check.ok, check.ok ? check.supports : 0);
     this.view.setHover(cell, level);
   }
 
@@ -432,7 +454,7 @@ export class App {
       if (Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > DRAG_THRESHOLD) return; // ドラッグはカメラ操作
       const { cell, pieceId } = this.pick(ev);
       if (this.tool) {
-        if (cell) this.apply(placePiece(this.course, this.tool, cell.q, cell.r, this.ghostRot), false);
+        if (cell) this.apply(placePiece(this.course, this.tool, cell.q, cell.r, this.ghostRot, this.placeLevel ?? 0), false);
       } else {
         this.selectedId = pieceId;
         this.onCourseChanged();
