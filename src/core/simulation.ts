@@ -51,6 +51,8 @@ export class Simulation {
   status: SimStatus = 'ready';
   failReason: FailReason | null = null;
   time = 0;
+  /** ゴールに入った時刻 */
+  goalTime: number | null = null;
   /** 経路に沿った速さ */
   speed = 0;
   /** 現在のパーツ */
@@ -202,6 +204,7 @@ export class Simulation {
     this.events.push({ time: this.time, type: 'enter', pieceId: piece.id });
     if (route.to === 'goal' && this.status !== 'success') {
       this.status = 'success';
+      this.goalTime = this.time;
       this.events.push({ time: this.time, type: 'success', pieceId: piece.id });
     }
   }

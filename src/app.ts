@@ -268,7 +268,7 @@ export class App {
       case 'falling':
         return { text: `落下中… ${t}`, kind: 'failed' };
       case 'success':
-        return { text: `ゴール！ ${t}`, kind: 'success' };
+        return { text: `ゴール！ ${(s.goalTime ?? s.time).toFixed(2)} 秒`, kind: 'success' };
       case 'failed':
         return { text: `失敗：${FAIL_MESSAGES[s.failReason!]}（${t}）`, kind: 'failed' };
     }

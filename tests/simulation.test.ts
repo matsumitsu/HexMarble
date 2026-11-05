@@ -158,5 +158,7 @@ describe('運動計算', () => {
   it('サンプルコースはゴールに届く', () => {
     const sim = new Simulation(sampleCourse()).runToEnd();
     expect(sim.status).toBe('success');
+    expect(sim.goalTime).toBeGreaterThan(0);
+    expect(sim.goalTime).toBeLessThanOrEqual(sim.time);
   });
 });
