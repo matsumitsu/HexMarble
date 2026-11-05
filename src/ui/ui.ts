@@ -57,7 +57,7 @@ export class Ui {
   private readonly speedSel: HTMLSelectElement;
   private readonly status: HTMLElement;
   private readonly toastEl: HTMLElement;
-  private readonly banner: HTMLElement;
+  private readonly holdRing: HTMLElement;
   private toastTimer = 0;
 
   constructor(root: HTMLElement, private readonly handlers: UiHandlers) {
@@ -96,14 +96,14 @@ export class Ui {
 
     // パレット
     this.palette = h('aside', { className: 'panel palette' }, h('h2', {}, 'タイル'));
-    const selectBtn = this.toolButton('select', '<span class="glyph">⌖</span>', '選択', 'Esc', '置いたタイルを選択する');
+    const selectBtn = this.toolButton('select', '<span class="glyph">⌖</span>', '選択', 'Esc', '置いたタイルを選択する（Q で設置モードを終了）');
     this.palette.append(selectBtn);
     PALETTE_ORDER.forEach((type, i) => {
       const def = getPart(type);
       this.palette.append(this.toolButton(type, partIconSvg(type, 34), def.name, String(i + 1), def.description));
     });
     this.palette.append(
-      h('p', { className: 'hint', innerHTML: '<b>R</b> 回転 ・ <b>Shift+R</b> 逆回転<br><b>緑</b>のセルは既存のコースとつながる場所' }),
+      h('p', { className: 'hint', innerHTML: '<b>R</b> 回転（<b>Shift</b>で逆）<br><b>Q</b> スポイト / 設置をやめる<br><b>右長押し</b> タイルを削除<br><b>緑</b>のセルは既存のコースとつながる場所' }),
     );
 
     // インスペクタ
@@ -142,12 +142,15 @@ export class Ui {
 
     this.viewport = h('div', { className: 'viewport' });
     this.toastEl = h('div', { className: 'toast' });
-    this.banner = h('div', { className: 'banner' });
+    this.holdRing = h('div', {
+      className: 'hold-ring',
+      innerHTML: '<svg viewBox="0 0 40 40"><circle class="track" cx="20" cy="20" r="16"/><circle class="bar" cx="20" cy="20" r="16" pathLength="100"/></svg>',
+    });
     const help = h('div', {
       className: 'help',
-      innerHTML: '左ドラッグ: 回転 ・ 右ドラッグ: パン ・ ホイール: ズーム ・ Tab: 編集/実行 ・ Ctrl+Z / Ctrl+Y: 元に戻す / やり直す',
+      innerHTML: '左ドラッグ: 回転 ・ 右ドラッグ: パン ・ ホイール: ズーム ・ 右長押し: 削除 ・ Q: スポイト / 設置終了 ・ Tab: 編集/実行 ・ Ctrl+Z / Ctrl+Y: 元に戻す / やり直す',
     });
-    root.append(header, h('main', { className: 'stage' }, this.viewport, this.palette, this.inspector, this.runPanel, this.banner, this.toastEl, help));
+    root.append(header, h('main', { className: 'stage' }, this.viewport, this.palette, this.inspector, this.runPanel, this.holdRing, this.toastEl, help));
   }
 
   private toolButton(tool: PartType | 'select', icon: string, name: string, key: string, desc: string): HTMLButtonElement {
@@ -198,15 +201,18 @@ export class Ui {
     this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('show'), 2200);
   }
 
-  showBanner(text: string, kind: 'success' | 'failed'): void {
-    this.banner.textContent = text;
-    this.banner.dataset.kind = kind;
-    this.banner.classList.remove('show');
-    void this.banner.offsetWidth; // アニメーションを再始動
-    this.banner.classList.add('show');
+  /** 右長押しの進み具合を示すリング（ビューポート内のクライアント座標） */
+  showHold(clientX: number, clientY: number, ms: number): void {
+    const rect = this.viewport.getBoundingClientRect();
+    this.holdRing.style.left = `${clientX - rect.left}px`;
+    this.holdRing.style.top = `${clientY - rect.top}px`;
+    this.holdRing.style.setProperty('--hold-ms', `${ms}ms`);
+    this.holdRing.classList.remove('show');
+    void this.holdRing.offsetWidth; // アニメーションを再始動
+    this.holdRing.classList.add('show');
   }
 
-  hideBanner(): void {
-    this.banner.classList.remove('show');
+  hideHold(): void {
+    this.holdRing.classList.remove('show');
   }
 }

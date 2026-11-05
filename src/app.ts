@@ -15,33 +15,40 @@ import {
   type Piece,
 } from './core/course';
 import { History } from './core/history';
-import { worldToAxial, type Axial } from './core/hex';
-import { mod6 } from './core/hex';
-import { PALETTE_ORDER, type PartType } from './core/parts';
+import { mod6, worldToAxial, type Axial } from './core/hex';
+import { AutoLauncher, type LaunchResult } from './core/launcher';
+import { getPart, PALETTE_ORDER, type PartType } from './core/parts';
 import { sampleCourse } from './core/sampleCourse';
-import { FAIL_MESSAGES, Simulation } from './core/simulation';
+import { FAIL_MESSAGES } from './core/simulation';
 import { CourseView, type CellHighlight } from './render/courseView';
 import { createScene, type SceneContext } from './render/scene';
 import { downloadJson, loadFromLocal, readJsonFile, saveToLocal } from './storage';
 import { Ui, type Mode } from './ui/ui';
+
+/** 右クリック長押しで削除するまでの時間 [ms] */
+const HOLD_TO_DELETE_MS = 500;
+/** これ以上ポインタが動いたらクリック・長押しではなくドラッグとみなす [px] */
+const DRAG_THRESHOLD = 6;
 
 export class App {
   private readonly ctx: SceneContext;
   private readonly view: CourseView;
   private readonly ui: Ui;
   private readonly history: History<Course>;
+  private readonly launcher: AutoLauncher;
   private mode: Mode = 'edit';
   private tool: PartType | null = null;
   private ghostRot = 0;
   private selectedId: number | null = null;
   private hoverCell: Axial | null = null;
-  private sim: Simulation | null = null;
-  private playing = false;
+  private hoverPieceId: number | null = null;
+  /** 実行モードでの再生状態（編集モードでは常に再生する） */
+  private playing = true;
   private speed = 1;
-  private reported = false;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private downAt: { x: number; y: number } | null = null;
+  private hold: { x: number; y: number; pieceId: number; timer: number } | null = null;
   private lastTime = performance.now();
   private highlightsDirty = true;
 
@@ -51,12 +58,12 @@ export class App {
       onTool: (t) => this.setTool(t),
       onUndo: () => this.undo(),
       onRedo: () => this.redo(),
-      onRotate: (d) => this.rotateSelected(d),
+      onRotate: (d) => this.selectedId !== null && this.apply(rotatePiece(this.course, this.selectedId, d)),
       onRaise: () => this.selectedId !== null && this.apply(raisePiece(this.course, this.selectedId)),
       onLower: () => this.selectedId !== null && this.apply(lowerPiece(this.course, this.selectedId)),
-      onDelete: () => this.deleteSelected(),
+      onDelete: () => this.selectedId !== null && this.deletePiece(this.selectedId),
       onPlayPause: () => this.togglePlay(),
-      onReset: () => this.resetRun(),
+      onReset: () => this.relaunch(),
       onSpeed: (s) => {
         this.speed = s;
         this.refreshUi();
@@ -65,7 +72,7 @@ export class App {
         saveToLocal(this.course);
         this.ui.toast('ブラウザに保存しました');
       },
-      onLoad: () => this.loadLocal(true),
+      onLoad: () => this.loadLocal(),
       onExport: () => downloadJson(this.course),
       onImport: (f) =>
         readJsonFile(f)
@@ -84,6 +91,7 @@ export class App {
       /* 壊れた保存データは無視してサンプルを使う */
     }
     this.history = new History(initial);
+    this.launcher = new AutoLauncher(initial);
     this.bindInput();
     this.onCourseChanged();
     requestAnimationFrame(this.frame);
@@ -95,6 +103,10 @@ export class App {
 
   private get selected(): Piece | null {
     return this.selectedId === null ? null : (getPiece(this.course, this.selectedId) ?? null);
+  }
+
+  private get hoveredPiece(): Piece | null {
+    return this.hoverPieceId === null ? null : (getPiece(this.course, this.hoverPieceId) ?? null);
   }
 
   // ---- 編集 ----
@@ -118,11 +130,11 @@ export class App {
     this.ui.toast(msg);
   }
 
-  private loadLocal(notify: boolean): void {
+  private loadLocal(): void {
     try {
       const c = loadFromLocal();
       if (!c) {
-        if (notify) this.ui.toast('保存されたコースがありません', 'error');
+        this.ui.toast('保存されたコースがありません', 'error');
         return;
       }
       this.replaceCourse(c, 'ブラウザから読み込みました');
@@ -141,20 +153,39 @@ export class App {
     this.onCourseChanged();
   }
 
-  private rotateSelected(delta: number): void {
+  /**
+   * R キー。設置モードなら置く前のタイルを、そうでなければカーソル下のタイル
+   * （なければ選択中のタイル）を回転する
+   */
+  private rotateKey(delta: number): void {
     if (this.tool) {
       this.ghostRot = mod6(this.ghostRot + delta);
       this.highlightsDirty = true;
       this.updateGhost();
       return;
     }
-    if (this.selectedId !== null) this.apply(rotatePiece(this.course, this.selectedId, delta));
+    const target = this.hoveredPiece ?? this.selected;
+    if (target) this.apply(rotatePiece(this.course, target.id, delta), false);
   }
 
-  private deleteSelected(): void {
-    if (this.selectedId === null) return;
-    if (this.apply(removePiece(this.course, this.selectedId), false)) this.selectedId = null;
-    this.onCourseChanged();
+  /** Q キー。設置モードなら終了し、そうでなければカーソル下のタイルを種類・向きごと拾う */
+  private eyedropper(): void {
+    if (this.tool) {
+      this.setTool(null);
+      return;
+    }
+    const p = this.hoveredPiece;
+    if (!p) return;
+    this.ghostRot = p.rot;
+    this.setTool(p.type);
+    this.ui.toast(`${getPart(p.type).name}を拾いました`);
+  }
+
+  private deletePiece(id: number): void {
+    if (this.apply(removePiece(this.course, id), false) && this.selectedId === id) {
+      this.selectedId = null;
+      this.onCourseChanged();
+    }
   }
 
   private setTool(tool: PartType | null): void {
@@ -162,12 +193,18 @@ export class App {
     this.tool = tool;
     if (tool) this.selectedId = null;
     this.highlightsDirty = true;
+    this.view.setSelection(null);
     this.updateGhost();
     this.refreshUi();
   }
 
   private onCourseChanged(): void {
     if (this.selectedId !== null && !this.selected) this.selectedId = null;
+    if (this.hoverPieceId !== null && !this.hoveredPiece) this.hoverPieceId = null;
+    if (this.launcher.course !== this.course) {
+      this.launcher.setCourse(this.course);
+      this.view.clearEffects();
+    }
     this.view.syncCourse(this.course, this.mode === 'edit');
     this.view.setSelection(this.mode === 'edit' ? this.selected : null);
     this.highlightsDirty = true;
@@ -192,10 +229,13 @@ export class App {
   }
 
   private updateGhost(): void {
-    const cell = this.mode === 'edit' && this.tool ? this.hoverCell : null;
+    const cell = this.mode === 'edit' ? this.hoverCell : null;
     if (!cell || !this.tool) {
       this.view.setGhost(null, null, 0, 0, false);
-      this.view.setHover(this.mode === 'edit' ? this.hoverCell : null, this.hoverCell ? stackTop(this.course, this.hoverCell.q, this.hoverCell.r) : 0);
+      // 選択ツールではカーソル下のタイルの上面に枠を出す（R・Q の対象）
+      const hp = this.hoveredPiece;
+      if (cell && hp) this.view.setHover(cell, hp.level + getPart(hp.type).span);
+      else this.view.setHover(cell, cell ? stackTop(this.course, cell.q, cell.r) : 0);
       return;
     }
     const check = canPlace(this.course, this.tool, cell.q, cell.r);
@@ -204,33 +244,26 @@ export class App {
     this.view.setHover(cell, level);
   }
 
-  // ---- 実行 ----
+  // ---- マーブルの発射 ----
 
   private setMode(mode: Mode): void {
     if (this.mode === mode) return;
     this.mode = mode;
     this.downAt = null;
+    this.cancelHold();
     if (mode === 'run') {
-      this.resetRun();
+      this.hoverCell = null;
+      this.hoverPieceId = null;
+      this.relaunch();
       this.playing = true;
-    } else {
-      this.sim = null;
-      this.playing = false;
-      this.view.setBall(null);
-      this.view.clearEffects();
-      this.ui.hideBanner();
     }
     this.onCourseChanged();
   }
 
-  private resetRun(): void {
-    this.sim = new Simulation(this.course);
-    this.reported = false;
-    this.playing = false;
-    this.ui.hideBanner();
+  /** スタートから発射し直す（分岐の状態も初期化） */
+  private relaunch(): void {
+    this.launcher.restart();
     this.view.clearEffects();
-    this.view.setBall(this.sim.status === 'failed' ? null : this.sim.position);
-    if (this.sim.status === 'failed') this.reportEnd();
     this.refreshUi();
   }
 
@@ -239,38 +272,30 @@ export class App {
       this.setMode('run');
       return;
     }
-    if (!this.sim || this.sim.finished) this.resetRun();
     this.playing = !this.playing;
     this.refreshUi();
   }
 
-  private reportEnd(): void {
-    if (!this.sim || this.reported) return;
-    this.reported = true;
-    if (this.sim.status === 'success') {
-      this.ui.showBanner('GOAL!', 'success');
-      const p = this.sim.position;
-      this.view.burst(new THREE.Vector3(p.x, p.y + 0.2, p.z));
-    } else if (this.sim.failReason) {
-      this.ui.showBanner(FAIL_MESSAGES[this.sim.failReason], 'failed');
-    }
+  private resultText(r: LaunchResult): string {
+    return r.status === 'success' ? `ゴール ${r.time.toFixed(2)} 秒` : `失敗：${FAIL_MESSAGES[r.reason ?? 'fell']}`;
   }
 
   private runStatus(): { text: string; kind: 'idle' | 'running' | 'success' | 'failed' } {
-    const s = this.sim;
-    if (!s) return { text: '', kind: 'idle' };
-    const t = `${s.time.toFixed(2)} 秒`;
+    const s = this.launcher.sim;
+    if (!s) return { text: FAIL_MESSAGES['no-start'], kind: 'failed' };
+    const last = this.launcher.lastResult;
+    const suffix = last ? `（前回：${this.resultText(last)}）` : '';
+    if (s.finished && last) return { text: this.resultText(last), kind: last.status };
     switch (s.status) {
       case 'ready':
-        return { text: '準備完了', kind: 'idle' };
       case 'rolling':
-        return { text: `走行中 ${t}・速さ ${s.speed.toFixed(2)}`, kind: 'running' };
+        return { text: `走行中 ${s.time.toFixed(2)} 秒${suffix}`, kind: 'running' };
       case 'falling':
-        return { text: `落下中… ${t}`, kind: 'failed' };
+        return { text: `落下中…${suffix}`, kind: 'failed' };
       case 'success':
-        return { text: `ゴール！ ${(s.goalTime ?? s.time).toFixed(2)} 秒`, kind: 'success' };
+        return { text: `ゴール ${(s.goalTime ?? s.time).toFixed(2)} 秒`, kind: 'success' };
       case 'failed':
-        return { text: `失敗：${FAIL_MESSAGES[s.failReason!]}（${t}）`, kind: 'failed' };
+        return { text: `失敗：${FAIL_MESSAGES[s.failReason!]}`, kind: 'failed' };
     }
   }
 
@@ -281,7 +306,7 @@ export class App {
       tool: this.tool,
       canUndo: this.history.canUndo,
       canRedo: this.history.canRedo,
-      selected: this.selected,
+      selected: this.tool ? null : this.selected,
       playing: this.playing,
       speed: this.speed,
       statusText: st.text,
@@ -291,7 +316,7 @@ export class App {
 
   // ---- 入力 ----
 
-  private pick(ev: PointerEvent): { cell: Axial | null; pieceId: number | null } {
+  private pick(ev: { clientX: number; clientY: number }): { cell: Axial | null; pieceId: number | null } {
     const rect = this.ctx.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.ctx.camera);
@@ -313,29 +338,57 @@ export class App {
     return { cell: null, pieceId: null };
   }
 
+  private startHold(ev: PointerEvent): void {
+    this.cancelHold();
+    const { pieceId } = this.pick(ev);
+    if (pieceId === null) return;
+    const timer = window.setTimeout(() => {
+      const h = this.hold;
+      this.hold = null;
+      this.ui.hideHold();
+      if (h && getPiece(this.course, h.pieceId)) this.deletePiece(h.pieceId);
+    }, HOLD_TO_DELETE_MS);
+    this.hold = { x: ev.clientX, y: ev.clientY, pieceId, timer };
+    this.ui.showHold(ev.clientX, ev.clientY, HOLD_TO_DELETE_MS);
+  }
+
+  private cancelHold(): void {
+    if (!this.hold) return;
+    clearTimeout(this.hold.timer);
+    this.hold = null;
+    this.ui.hideHold();
+  }
+
   private bindInput(): void {
     const el = this.ctx.renderer.domElement;
     el.addEventListener('pointermove', (ev) => {
+      if (this.hold && Math.hypot(ev.clientX - this.hold.x, ev.clientY - this.hold.y) > DRAG_THRESHOLD) this.cancelHold();
       if (this.mode !== 'edit') return;
-      const { cell } = this.pick(ev);
-      const changed = cell?.q !== this.hoverCell?.q || cell?.r !== this.hoverCell?.r;
-      if (changed) {
-        this.hoverCell = cell && this.view.cells.some((c) => c.q === cell.q && c.r === cell.r) ? cell : null;
+      const { cell, pieceId } = this.pick(ev);
+      const inGrid = cell && this.view.cells.some((c) => c.q === cell.q && c.r === cell.r) ? cell : null;
+      if (inGrid?.q !== this.hoverCell?.q || inGrid?.r !== this.hoverCell?.r || pieceId !== this.hoverPieceId) {
+        this.hoverCell = inGrid;
+        this.hoverPieceId = pieceId;
         this.updateGhost();
       }
     });
     el.addEventListener('pointerleave', () => {
       this.hoverCell = null;
+      this.hoverPieceId = null;
+      this.cancelHold();
       this.updateGhost();
     });
     el.addEventListener('pointerdown', (ev) => {
       if (ev.button === 0) this.downAt = { x: ev.clientX, y: ev.clientY };
+      if (ev.button === 2 && this.mode === 'edit') this.startHold(ev);
     });
+    el.addEventListener('pointercancel', () => this.cancelHold());
     el.addEventListener('pointerup', (ev) => {
+      if (ev.button === 2) this.cancelHold();
       const d = this.downAt;
       this.downAt = null;
       if (ev.button !== 0 || !d || this.mode !== 'edit') return;
-      if (Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 5) return; // ドラッグはカメラ操作
+      if (Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > DRAG_THRESHOLD) return; // ドラッグはカメラ操作
       const { cell, pieceId } = this.pick(ev);
       if (this.tool) {
         if (cell) this.apply(placePiece(this.course, this.tool, cell.q, cell.r, this.ghostRot), false);
@@ -351,13 +404,16 @@ export class App {
       if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
       const ctrl = ev.ctrlKey || ev.metaKey;
       const key = ev.key;
-      if (ctrl && key.toLowerCase() === 'z') {
+      const lower = key.toLowerCase();
+      if (ctrl && lower === 'z') {
         ev.preventDefault();
         if (ev.shiftKey) this.redo();
         else this.undo();
-      } else if (ctrl && key.toLowerCase() === 'y') {
+      } else if (ctrl && lower === 'y') {
         ev.preventDefault();
         this.redo();
+      } else if (ctrl || ev.altKey) {
+        return;
       } else if (key === 'Tab') {
         ev.preventDefault();
         this.setMode(this.mode === 'edit' ? 'run' : 'edit');
@@ -365,13 +421,15 @@ export class App {
         ev.preventDefault();
         this.togglePlay();
       } else if (this.mode === 'run') {
-        if (key === 'Backspace' || key.toLowerCase() === 'x') this.resetRun();
+        if (key === 'Backspace' || lower === 'x') this.relaunch();
         else if (key === 'Escape') this.setMode('edit');
-      } else if (key.toLowerCase() === 'r' && !ctrl) {
-        this.rotateSelected(ev.shiftKey ? 1 : -1);
+      } else if (lower === 'r') {
+        this.rotateKey(ev.shiftKey ? 1 : -1);
+      } else if (lower === 'q') {
+        this.eyedropper();
       } else if (key === 'Delete' || key === 'Backspace') {
         ev.preventDefault();
-        this.deleteSelected();
+        if (this.selectedId !== null) this.deletePiece(this.selectedId);
       } else if (key === 'PageUp' || key === ']') {
         ev.preventDefault();
         if (this.selectedId !== null) this.apply(raisePiece(this.course, this.selectedId));
@@ -382,7 +440,7 @@ export class App {
         this.selectedId = null;
         this.setTool(null);
         this.onCourseChanged();
-      } else if (/^[1-9]$/.test(key) && !ctrl) {
+      } else if (/^[1-9]$/.test(key)) {
         const t = PALETTE_ORDER[Number(key) - 1];
         if (t) this.setTool(this.tool === t ? null : t);
       }
@@ -397,18 +455,19 @@ export class App {
 
     if (this.highlightsDirty) this.updateHighlights();
 
-    if (this.mode === 'run' && this.sim) {
-      if (this.playing && !this.sim.finished) {
-        this.sim.advance(dt * this.speed);
-        if (this.sim.finished || this.sim.status === 'success') this.reportEnd();
-        if (this.sim.finished) this.playing = false;
-        this.refreshUi();
+    // 編集モードでも常にマーブルを転がし、ゴール・失敗後は自動で再発射する
+    if (this.mode === 'edit' || this.playing) {
+      for (const e of this.launcher.advance(dt * this.speed)) {
+        if (e.type === 'goal') {
+          const goal = getPiece(this.course, e.pieceId);
+          if (goal) this.view.launchFireworks(goal);
+        }
       }
-      this.view.setBall(this.sim.status === 'failed' && this.sim.failReason === 'no-start' ? null : this.sim.position);
-      this.view.setSplitterStates(this.course, this.sim.toggles);
-    } else {
-      this.view.setSplitterStates(this.course, new Map());
+      if (this.mode === 'run') this.refreshUi();
     }
+    const sim = this.launcher.sim;
+    this.view.setBall(sim ? sim.position : null);
+    this.view.setSplitterStates(this.course, sim ? sim.toggles : new Map());
 
     this.view.tick(dt);
     this.ctx.controls.update();
