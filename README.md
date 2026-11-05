@@ -92,5 +92,5 @@ tests/             Vitest の単体テスト
    - 同じ `from` の経路を複数書くと、通るたびに交互に選ばれます（分岐）。
    - `span`（占有する高さ）、`color`、`name`、`description` も設定します。
 3. **パレットに並べる** — `PALETTE_ORDER` に追加します（先頭9個は数字キーで選べます）。アイコンは経路データから自動生成されます。
-4. **見た目を作る** — `src/render/meshes.ts` の `BUILDERS` に、ローカル座標（底面 y = 0、辺0が +X 方向）でメッシュを作る関数を追加します。`basePlate` と `addTrack` を呼べば、板と経路に沿ったレールは自動で付きます。
+4. **見た目を作る** — `src/render/meshes.ts` の `BUILDERS` に、ローカル座標（底面 y = 0、辺0が +X 方向）でメッシュを作る関数を追加します。`basePlate` を呼べば、厚みのある土台の板に、経路データに沿ったハーフパイプの溝が自動でくり抜かれます（溝の形は `src/render/tileSurface.ts` の `surfaceHeight` で計算）。
 5. **テストする** — `npm test` を実行します。「経路の端点は接続口の位置と一致する」テストが定義の誤りを検出します。必要に応じて `tests/simulation.test.ts` に、そのタイルを通るコースのテストを追加してください。
