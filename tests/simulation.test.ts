@@ -109,12 +109,15 @@ describe('運動計算', () => {
     expect(first.status).toBe('success');
     const firstGoal = first.events.find((e) => e.type === 'success')!.pieceId;
 
-    // 同じシミュレーション内で2回通すため、分岐の状態を引き継いで再試行
-    const second = new Simulation(c);
-    second.toggles.set(2, 1);
-    second.runToEnd();
+    // 再発射のときは分岐の状態を引き継ぐ
+    const second = new Simulation(c, {}, first.toggles).runToEnd();
     const secondGoal = second.events.find((e) => e.type === 'success')!.pieceId;
     expect(new Set([firstGoal, secondGoal])).toEqual(new Set([3, 4]));
+    // 3回目は1回目と同じ出口に戻る
+    const third = new Simulation(c, {}, second.toggles).runToEnd();
+    expect(third.events.find((e) => e.type === 'success')!.pieceId).toBe(firstGoal);
+    // 引き継ぎ元の状態は変更されない
+    expect(first.toggles.get(2)).toBe(1);
   });
 
   it('落下口から真下のタイルへ落ちる', () => {

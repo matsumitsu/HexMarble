@@ -61,7 +61,7 @@ export class Simulation {
   /** 経路上の弧長位置 */
   s = 0;
   /** 分岐タイルの切り替えカウンタ（pieceId → 通過回数） */
-  readonly toggles = new Map<number, number>();
+  readonly toggles: Map<number, number>;
   readonly events: SimEvent[] = [];
   /** マーブルの中心位置 */
   position: Vec3 = v3(0, 0, 0);
@@ -73,8 +73,13 @@ export class Simulation {
   private readonly index: CourseIndex;
   private readonly routeCache = new Map<number, WorldRoute[]>();
 
-  constructor(readonly course: Course, params: Partial<PhysicsParams> = {}) {
+  /**
+   * @param toggles 分岐の切り替え状態の初期値。再発射のときに前回の状態を渡すと、
+   *   発射のたびに出口が交互に切り替わる（渡した Map は変更しない）
+   */
+  constructor(readonly course: Course, params: Partial<PhysicsParams> = {}, toggles?: ReadonlyMap<number, number>) {
     this.params = { ...DEFAULT_PHYSICS, ...params };
+    this.toggles = new Map(toggles);
     this.index = new CourseIndex(course);
     const start = course.pieces.find((p) => p.type === 'start');
     const startRoute = start && this.routesOf(start).find((r) => r.from === 'start');
