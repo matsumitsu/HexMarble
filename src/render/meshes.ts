@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { HEX_SIZE, LEVEL_HEIGHT, TRACK_Y } from '../core/constants';
+import { HEX_SIZE, TRACK_Y } from '../core/constants';
 import { hexCorner } from '../core/hex';
 import { getPart, type PartType } from '../core/parts';
 import { DROP_HOLE_RADIUS, DROP_HOLE_RIM, plateTop, PLATE_TOP, surfaceHeight } from './tileSurface';
@@ -226,23 +226,6 @@ const BUILDERS: Record<PartType, Builder> = {
   },
   slope(g) {
     g.add(basePlate('slope'));
-  },
-  support(g) {
-    const color = getPart('support').color;
-    const h = LEVEL_HEIGHT - 0.01;
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.72, 0.8, h, 6, 1, false), mat(shade(color, 0.7), { rough: 0.85 }));
-    body.position.y = h / 2;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    g.add(body);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(body.geometry), new THREE.LineBasicMaterial({ color: shade(color, 1.2) }));
-    edges.position.copy(body.position);
-    g.add(edges);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.025, 6, 6), mat(shade(color, 1.1), { metal: 0.3 }));
-    ring.rotation.x = Math.PI / 2;
-    ring.rotation.z = Math.PI / 6 + Math.PI / 2;
-    ring.position.y = h * 0.5;
-    g.add(ring);
   },
   splitter(g) {
     g.add(basePlate('splitter'));

@@ -118,8 +118,8 @@ export class Ui {
         { className: 'actions' },
         button('⟲', '左に60°回転 (Shift+R)', () => H.onRotate(1)),
         button('⟳', '右に60°回転 (R)', () => H.onRotate(-1)),
-        button('▲ 上げる', '支柱を差し込んで1レベル上げる (E / PageUp / ])', H.onRaise),
-        button('▼ 下げる', '真下の支柱を外して1レベル下げる (Shift+E / PageDown / [)', H.onLower),
+        button('▲ 上げる', '1レベル上げる (E / PageUp / ])', H.onRaise),
+        button('▼ 下げる', '1レベル下げる (Shift+E / PageDown / [)', H.onLower),
         button('削除', '削除 (Delete)', H.onDelete, 'danger'),
       ),
     );

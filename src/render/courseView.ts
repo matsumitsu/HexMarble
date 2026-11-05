@@ -36,9 +36,8 @@ export class CourseView {
   };
   private ghost: THREE.Group | null = null;
   private ghostKey = '';
-  /** 設置レベルまで自動で積む支柱のゴースト */
-  private readonly ghostSupports = new THREE.Group();
-  private ghostSupportsKey = '';
+  /** 宙に置くタイルの高さが分かるよう、地面までの目安線と地面の枠を出す */
+  private readonly ghostGuide: THREE.Group;
   private readonly selection: THREE.LineLoop;
   private readonly hover: THREE.LineLoop;
   private readonly portMarkers: THREE.InstancedMesh;
@@ -79,6 +78,19 @@ export class CourseView {
     this.selection.visible = false;
     this.hover.visible = false;
     this.root.add(this.selection, this.hover);
+
+    // 目安線は高さ1の線を scale.y で伸ばす
+    const pole = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 1, 0)]),
+      new THREE.LineDashedMaterial({ color: 0x9fd3ff, dashSize: 0.08, gapSize: 0.06, transparent: true, opacity: 0.8 }),
+    );
+    pole.computeLineDistances();
+    const ground = hexOutline(0x9fd3ff, 0.6);
+    ground.position.y = 0.02;
+    this.ghostGuide = new THREE.Group();
+    this.ghostGuide.add(pole, ground);
+    this.ghostGuide.visible = false;
+    this.root.add(this.ghostGuide);
 
     this.portMarkers = new THREE.InstancedMesh(
       new THREE.SphereGeometry(0.06, 10, 8),
@@ -159,22 +171,12 @@ export class CourseView {
     if (this.tiles.instanceColor) this.tiles.instanceColor.needsUpdate = true;
   }
 
-  setGhost(type: PartType | null, cell: Axial | null, level: number, rot: number, ok: boolean, supports = 0): void {
-    const n = type && cell && ok ? supports : 0;
-    const supportsKey = `${n}`;
-    if (supportsKey !== this.ghostSupportsKey) {
-      this.ghostSupports.clear();
-      for (let i = 0; i < n; i++) {
-        const g = createGhostMesh('support', this.ghostMats.ok);
-        g.position.y = (i - n) * LEVEL_HEIGHT;
-        this.ghostSupports.add(g);
-      }
-      if (n > 0 && !this.ghostSupports.parent) this.root.add(this.ghostSupports);
-      this.ghostSupportsKey = supportsKey;
-    }
-    if (n > 0 && cell) {
+  setGhost(type: PartType | null, cell: Axial | null, level: number, rot: number, ok: boolean): void {
+    this.ghostGuide.visible = !!(type && cell && level > 0);
+    if (this.ghostGuide.visible && cell) {
       const w = axialToWorld(cell.q, cell.r);
-      this.ghostSupports.position.set(w.x, level * LEVEL_HEIGHT + 0.01, w.z);
+      this.ghostGuide.position.set(w.x, 0, w.z);
+      this.ghostGuide.children[0].scale.y = level * LEVEL_HEIGHT;
     }
     const key = type && cell ? `${type}|${ok}` : '';
     if (key !== this.ghostKey) {

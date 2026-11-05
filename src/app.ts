@@ -180,8 +180,7 @@ export class App {
       this.placeLevel = next;
       this.highlightsDirty = true;
       this.updateGhost();
-      const shown = cell ? this.ghostLevel(cell) : next;
-      this.ui.toast(shown > next ? `設置レベル ${next}（このセルはレベル${shown}より下に置けません）` : `設置レベル ${next}`);
+      this.ui.toast(`設置レベル ${next}`);
       return;
     }
     const target = this.hoveredPiece ?? this.selected;
@@ -280,15 +279,15 @@ export class App {
     }
     const index = new CourseIndex(this.course);
     this.view.setHighlights(({ q, r }): CellHighlight => {
-      const check = canPlace(this.course, tool, q, r, this.placeLevel ?? 0);
+      const check = canPlace(this.course, tool, q, r, this.placeLevel ?? undefined);
       if (!check.ok) return 'blocked';
       return placementConnects(index, tool, q, r, check.level, this.ghostRot) ? 'connects' : 'placeable';
     });
   }
 
-  /** 設置モードでカーソル位置に置くときのレベル */
+  /** 設置モードでカーソル位置に置くときのレベル（未指定ならセルの最上部） */
   private ghostLevel(cell: Axial): number {
-    return Math.max(stackTop(this.course, cell.q, cell.r), this.placeLevel ?? 0);
+    return this.placeLevel ?? stackTop(this.course, cell.q, cell.r);
   }
 
   private updateGhost(): void {
@@ -301,9 +300,9 @@ export class App {
       else this.view.setHover(cell, cell ? stackTop(this.course, cell.q, cell.r) : 0);
       return;
     }
-    const check = canPlace(this.course, this.tool, cell.q, cell.r, this.placeLevel ?? 0);
-    const level = check.ok ? check.level : this.ghostLevel(cell);
-    this.view.setGhost(this.tool, cell, level, this.ghostRot, check.ok, check.ok ? check.supports : 0);
+    const level = this.ghostLevel(cell);
+    const check = canPlace(this.course, this.tool, cell.q, cell.r, level);
+    this.view.setGhost(this.tool, cell, level, this.ghostRot, check.ok);
     this.view.setHover(cell, level);
   }
 
@@ -454,7 +453,7 @@ export class App {
       if (Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > DRAG_THRESHOLD) return; // ドラッグはカメラ操作
       const { cell, pieceId } = this.pick(ev);
       if (this.tool) {
-        if (cell) this.apply(placePiece(this.course, this.tool, cell.q, cell.r, this.ghostRot, this.placeLevel ?? 0), false);
+        if (cell) this.apply(placePiece(this.course, this.tool, cell.q, cell.r, this.ghostRot, this.ghostLevel(cell)), false);
       } else {
         this.selectedId = pieceId;
         this.onCourseChanged();
