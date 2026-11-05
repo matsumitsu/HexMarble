@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_PHYSICS } from '../src/core/constants';
 import { emptyCourse } from '../src/core/course';
 import { buildCourse, sampleCourse } from '../src/core/sampleCourse';
+import { neighbor } from '../src/core/hex';
 import { Simulation } from '../src/core/simulation';
 
 describe('運動計算', () => {
@@ -115,6 +116,72 @@ describe('運動計算', () => {
     expect(third.events.find((e) => e.type === 'success')!.pieceId).toBe(firstGoal);
     // 引き継ぎ元の状態は変更されない
     expect(first.toggles.get(2)).toBe(1);
+  });
+
+  it('交差は2本の経路のどちらでも、まっすぐ抜ける', () => {
+    for (const rot of [0, 1]) {
+      const c = buildCourse([
+        ['start', 0, 0, 0],
+        ['cross', 1, 0, rot],
+        ['goal', 2, 0],
+      ]);
+      const sim = new Simulation(c).runToEnd();
+      expect(sim.status, `rot ${rot}`).toBe('success');
+      expect(sim.events.filter((e) => e.type === 'enter').map((e) => e.pieceId)).toEqual([1, 2, 3]);
+    }
+    // 経路のない向き（回転2）では接続口がないので落ちる
+    const c = buildCourse([
+      ['start', 0, 0, 0],
+      ['cross', 1, 0, 2],
+      ['goal', 2, 0],
+    ]);
+    expect(new Simulation(c).runToEnd().failReason).toBe('fell');
+  });
+
+  it('合流は3つの入口のどれからでも辺0へ送り出し、出口からは入れない', () => {
+    // 回転 rot の合流に西（ワールドの辺3）から入ると、ローカルの辺 3-rot から入る
+    for (const rot of [1, 0, 5] as const) {
+      const exit = neighbor(1, 0, rot);
+      const c = buildCourse([
+        ['start', 0, 0, 0],
+        ['merge', 1, 0, rot],
+        ['goal', exit.q, exit.r],
+      ]);
+      const sim = new Simulation(c).runToEnd();
+      expect(sim.status, `rot ${rot}`).toBe('success');
+    }
+    const blocked = buildCourse([
+      ['start', 0, 0, 0],
+      ['merge', 1, 0, 3],
+    ]);
+    const sim = new Simulation(blocked).runToEnd();
+    expect(sim.failReason).toBe('blocked');
+  });
+
+  it('Uターンは同じ辺・同じ高さへマーブルを送り返す', () => {
+    // 分岐の辺2から入って辺0へ抜け、Uターンで戻り、分岐の辺0から辺4へ抜けてゴールする
+    const out = neighbor(0, 0, 1);
+    const goal = neighbor(0, 0, 5);
+    const c = buildCourse([
+      ['start', -1, 0, 0],
+      ['splitter', 0, 0, 1],
+      ['uturn', out.q, out.r, 4],
+      ['goal', goal.q, goal.r],
+    ]);
+    const sim = new Simulation(c, {}, new Map([[2, 1]])).runToEnd();
+    expect(sim.status).toBe('success');
+    expect(sim.events.filter((e) => e.type === 'enter').map((e) => e.pieceId)).toEqual([1, 2, 3, 2, 4]);
+  });
+
+  it('Uターンから戻った先に経路がなければ止まる', () => {
+    const c = buildCourse([
+      ['start', 0, 0, 0],
+      ['straight', 1, 0, 0],
+      ['uturn', 2, 0, 3],
+    ]);
+    const sim = new Simulation(c).runToEnd();
+    expect(sim.events.filter((e) => e.type === 'enter').map((e) => e.pieceId)).toEqual([1, 2, 3, 2]);
+    expect(sim.failReason).toBe('blocked');
   });
 
   it('落下口から真下のタイルへ落ちる', () => {
