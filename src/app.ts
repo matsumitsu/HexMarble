@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GRID_RADIUS, HEX_SIZE } from './core/constants';
 import { CourseIndex, placementConnects } from './core/connections';
 import {
   canPlace,
@@ -166,6 +167,46 @@ export class App {
     }
     const target = this.hoveredPiece ?? this.selected;
     if (target) this.apply(rotatePiece(this.course, target.id, delta), false);
+  }
+
+  /** E キー。カーソル下のタイル（なければ選択中のタイル）を1レベル上げる / 下げる */
+  private levelKey(up: boolean): void {
+    const target = this.hoveredPiece ?? this.selected;
+    if (!target) return;
+    this.apply(up ? raisePiece(this.course, target.id) : lowerPiece(this.course, target.id), false);
+    this.updateGhost();
+  }
+
+  /** WASD で押されているキー */
+  private readonly moveKeys = new Set<string>();
+
+  /** 押されている WASD に従い、カメラを視線方向基準で水平に動かす */
+  private moveCamera(dt: number): void {
+    if (this.moveKeys.size === 0) return;
+    const { camera, controls } = this.ctx;
+    const fwd = new THREE.Vector3().subVectors(controls.target, camera.position).setY(0);
+    if (fwd.lengthSq() < 1e-8) return;
+    fwd.normalize();
+    const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const dir = new THREE.Vector3();
+    if (this.moveKeys.has('w')) dir.add(fwd);
+    if (this.moveKeys.has('s')) dir.sub(fwd);
+    if (this.moveKeys.has('d')) dir.add(right);
+    if (this.moveKeys.has('a')) dir.sub(right);
+    if (dir.lengthSq() === 0) return;
+    const speed = camera.position.distanceTo(controls.target) * 0.8;
+    const move = dir.normalize().multiplyScalar(speed * dt);
+    // グリッドから離れすぎないように注視点を制限する
+    const limit = GRID_RADIUS * HEX_SIZE * 2.2;
+    const next = controls.target.clone().add(move);
+    const len = Math.hypot(next.x, next.z);
+    if (len > limit) {
+      next.x *= limit / len;
+      next.z *= limit / len;
+    }
+    move.subVectors(next, controls.target);
+    controls.target.add(move);
+    camera.position.add(move);
   }
 
   /** Q キー。設置モードなら終了し、そうでなければカーソル下のタイルを種類・向きごと拾う */
@@ -405,6 +446,10 @@ export class App {
       const ctrl = ev.ctrlKey || ev.metaKey;
       const key = ev.key;
       const lower = key.toLowerCase();
+      if (!ctrl && !ev.altKey && 'wasd'.includes(lower) && lower.length === 1) {
+        this.moveKeys.add(lower);
+        return;
+      }
       if (ctrl && lower === 'z') {
         ev.preventDefault();
         if (ev.shiftKey) this.redo();
@@ -427,6 +472,8 @@ export class App {
         this.rotateKey(ev.shiftKey ? 1 : -1);
       } else if (lower === 'q') {
         this.eyedropper();
+      } else if (lower === 'e') {
+        this.levelKey(!ev.shiftKey);
       } else if (key === 'Delete' || key === 'Backspace') {
         ev.preventDefault();
         if (this.selectedId !== null) this.deletePiece(this.selectedId);
@@ -445,6 +492,8 @@ export class App {
         if (t) this.setTool(this.tool === t ? null : t);
       }
     });
+    window.addEventListener('keyup', (ev) => this.moveKeys.delete(ev.key.toLowerCase()));
+    window.addEventListener('blur', () => this.moveKeys.clear());
   }
 
   // ---- ループ ----
@@ -470,6 +519,7 @@ export class App {
     this.view.setSplitterStates(this.course, sim ? sim.toggles : new Map());
 
     this.view.tick(dt);
+    this.moveCamera(dt);
     this.ctx.controls.update();
     this.ctx.renderer.render(this.ctx.scene, this.ctx.camera);
     requestAnimationFrame(this.frame);
