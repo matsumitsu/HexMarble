@@ -24,8 +24,7 @@ describe('運動計算', () => {
 
   it('接続先がなければ放物線を描いて落下し、失敗になる', () => {
     const c = buildCourse([
-      ['support', 0, 0],
-      ['start', 0, 0, 0],
+      ['start', 0, 0, 0, 1],
     ]);
     const sim = new Simulation(c);
     const ys: number[] = [];
@@ -52,8 +51,7 @@ describe('運動計算', () => {
     const c = buildCourse([
       ['start', 0, 0, 0],
       ['slope', 1, 0, 0], // 辺3(低)から入り辺0(高)へ登る
-      ['support', 2, 0],
-      ['goal', 2, 0],
+      ['goal', 2, 0, 0, 1],
     ]);
     const sim = new Simulation(c, { startSpeed: 1 }).runToEnd();
     expect(sim.status).toBe('failed');
@@ -69,8 +67,7 @@ describe('運動計算', () => {
 
   it('下り坂では加速し、減衰だけなら減速する', () => {
     const c = buildCourse([
-      ['support', 0, 0],
-      ['start', 0, 0, 0],
+      ['start', 0, 0, 0, 1],
       ['slope', 1, 0, 3],
       ['straight', 2, 0, 0],
       ['goal', 3, 0],
@@ -86,8 +83,8 @@ describe('運動計算', () => {
       }
     }
     expect(sim.status).toBe('success');
-    const slope = speedOn.get(3)!;
-    const flat = speedOn.get(4)!;
+    const slope = speedOn.get(2)!;
+    const flat = speedOn.get(3)!;
     expect(slope[slope.length - 1]).toBeGreaterThan(slope[0]);
     expect(flat[flat.length - 1]).toBeLessThan(flat[0]);
     // 高低差による加速：v² の増分 ≈ 2g·Δh − 2·friction·距離
@@ -121,16 +118,53 @@ describe('運動計算', () => {
   });
 
   it('落下口から真下のタイルへ落ちる', () => {
-    // ゴールの上に落下口。スタートを支柱で1レベル上げ、落下口の入口(辺0→西向き)へ
+    // ゴールの上に落下口。スタートを1レベル上げ、落下口の入口(辺0→西向き)へ
     const c2 = buildCourse([
-      ['support', -1, 0],
-      ['start', -1, 0, 0],
+      ['start', -1, 0, 0, 1],
       ['goal', 0, 0],
-      ['drop', 0, 0, 3],
+      ['drop', 0, 0, 3, 1],
     ]);
     const sim = new Simulation(c2).runToEnd();
     expect(sim.status).toBe('success');
-    expect(sim.events.filter((e) => e.type === 'enter').map((e) => e.pieceId)).toEqual([2, 4, 3]);
+    expect(sim.events.filter((e) => e.type === 'enter').map((e) => e.pieceId)).toEqual([1, 3, 2]);
+  });
+
+  it('落下口から隙間をあけた下のタイルへ、垂直に落ちて加速する', () => {
+    const c = buildCourse([
+      ['start', -1, 0, 0, 4],
+      ['drop', 0, 0, 3, 4],
+      ['straight', 0, 0, 0, 0],
+      ['goal', 1, 0, 0, 0],
+    ]);
+    // 直線には up がないのでつながらない
+    expect(new Simulation(c).runToEnd().status).toBe('failed');
+
+    const c2 = buildCourse([
+      ['start', -1, 0, 0, 4],
+      ['drop', 0, 0, 3, 4],
+      ['goal', 0, 0, 0, 0],
+    ]);
+    const sim = new Simulation(c2);
+    let maxSpeed = 0;
+    let x0 = NaN;
+    let z0 = NaN;
+    while (!sim.finished) {
+      sim.step();
+      // 落下口の下からゴールまで（レベル4→1 の上面）の区間は真下へまっすぐ落ちる
+      if (sim.piece?.type === 'goal' && sim.position.y > 0.6) {
+        if (Number.isNaN(x0)) {
+          x0 = sim.position.x;
+          z0 = sim.position.z;
+        }
+        expect(sim.position.x).toBeCloseTo(x0, 6);
+        expect(sim.position.z).toBeCloseTo(z0, 6);
+        maxSpeed = Math.max(maxSpeed, sim.speed);
+      }
+    }
+    expect(sim.status).toBe('success');
+    expect(sim.status).not.toBe('falling');
+    // 1.5 の高さを落ちたぶん速くなる（v² ≈ 2gh）
+    expect(maxSpeed).toBeGreaterThan(Math.sqrt(2 * DEFAULT_PHYSICS.gravity * 1.0));
   });
 
   it('同じコースなら毎回同じ結果になる（決定的）', () => {

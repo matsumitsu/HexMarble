@@ -197,6 +197,12 @@ export class Simulation {
       this.toggles.set(conn.piece.id, count + 1);
       this.events.push({ time: this.time, type: 'switch', pieceId: conn.piece.id });
     }
+    // 落下口から隙間をあけて下のタイルへ落ちるときは、出口から入口までの垂直な区間を経路の先頭に足す
+    const exit = sampleAt(cur.poly, cur.poly.length).pos;
+    const entry = next.poly.pts[0];
+    if (exit.y - entry.y > 1e-6) {
+      next = { ...next, poly: buildPolyline([exit, ...next.poly.pts]) };
+    }
     this.enter(conn.piece, next, overflow);
     return true;
   }

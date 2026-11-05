@@ -107,28 +107,25 @@ describe('接続判定', () => {
   it('高さが違えばつながらない', () => {
     let c = emptyCourse();
     c = place(c, 'straight', 0, 0, 0);
-    c = place(c, 'support', 1, 0);
-    c = place(c, 'straight', 1, 0, 0);
-    expect(areConnected(c, 1, 3)).toBe(false);
+    c = place(c, 'straight', 1, 0, 0, 1);
+    expect(areConnected(c, 1, 2)).toBe(false);
   });
 
   it('坂は高い側で1つ上のレベルとつながる', () => {
     let c = emptyCourse();
-    c = place(c, 'support', 0, 0);
-    c = place(c, 'straight', 0, 0, 0); // レベル1
+    c = place(c, 'straight', 0, 0, 0, 1); // レベル1
     c = place(c, 'slope', 1, 0, 3); // 高い側(辺0)を西(辺3)へ
     c = place(c, 'straight', 2, 0, 0); // レベル0
-    const [, straightHigh, slope, straightLow] = c.pieces;
+    const [straightHigh, slope, straightLow] = c.pieces;
     expect(areConnected(c, straightHigh.id, slope.id)).toBe(true);
     expect(areConnected(c, slope.id, straightLow.id)).toBe(true);
   });
 
   it('坂を逆向きに置くと高さが合わない', () => {
     let c = emptyCourse();
-    c = place(c, 'support', 0, 0);
-    c = place(c, 'straight', 0, 0, 0);
+    c = place(c, 'straight', 0, 0, 0, 1);
     c = place(c, 'slope', 1, 0, 0);
-    expect(areConnected(c, 2, 3)).toBe(false);
+    expect(areConnected(c, 1, 2)).toBe(false);
   });
 
   it('落下口の下の接続口は、真下のタイルの上の接続口とつながる', () => {
@@ -141,11 +138,29 @@ describe('接続判定', () => {
     expect(findConnection(index, drop, down)?.piece.id).toBe(1);
   });
 
-  it('支柱は接続口を持たない', () => {
+  it('落下口は、隙間があっても真下で一番近いタイルの上の接続口とつながる', () => {
     let c = emptyCourse();
-    c = place(c, 'support', 0, 0);
-    c = place(c, 'straight', 1, 0, 0);
-    expect(areConnected(c, 1, 2)).toBe(false);
+    c = place(c, 'goal', 0, 0, 0, 0);
+    c = place(c, 'drop', 0, 0, 0, 4);
+    const index = new CourseIndex(c);
+    const drop = c.pieces[1];
+    const down = worldPorts(drop).find((p) => p.id === 'down')!;
+    expect(findConnection(index, drop, down)?.piece.id).toBe(1);
+    // ゴール側の up からも落下口へつながる（対称）
+    const goal = c.pieces[0];
+    const up = worldPorts(goal).find((p) => p.id === 'up')!;
+    expect(findConnection(index, goal, up)?.piece.id).toBe(2);
+  });
+
+  it('落下口の真下で一番近いタイルに上の接続口がなければつながらない', () => {
+    let c = emptyCourse();
+    c = place(c, 'goal', 0, 0, 0, 0);
+    c = place(c, 'straight', 0, 0, 0, 2); // 間に受け口のないタイル
+    c = place(c, 'drop', 0, 0, 0, 4);
+    const index = new CourseIndex(c);
+    const drop = c.pieces[2];
+    const down = worldPorts(drop).find((p) => p.id === 'down')!;
+    expect(findConnection(index, drop, down)).toBeNull();
   });
 
   it('analyzeConnections は接続を重複なく数え、空いた接続口を返す', () => {

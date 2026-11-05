@@ -1,5 +1,5 @@
 import type { Course, Piece } from './course';
-import { cellKey, neighbor, oppositeSide, rotateSide } from './hex';
+import { cellKey, neighbor, oppositeSide, rotateSide, type Side } from './hex';
 import { getPart, type PartType, type PortId } from './parts';
 
 /** ワールド向きに回転した接続口 */
@@ -51,21 +51,48 @@ export class CourseIndex {
   }
 }
 
-/** 接続口の向かい側として一致すべき位置 */
-function matchingTarget(piece: Pick<Piece, 'q' | 'r'>, port: WorldPort): { q: number; r: number; id: PortId } {
-  if (port.id === 'up') return { q: piece.q, r: piece.r, id: 'down' };
-  if (port.id === 'down') return { q: piece.q, r: piece.r, id: 'up' };
-  const n = neighbor(piece.q, piece.r, port.id);
-  return { q: n.q, r: n.r, id: oppositeSide(port.id) };
+/** 隣のセルの向かい合う辺 */
+function facingSide(piece: Pick<Piece, 'q' | 'r'>, side: Side): { q: number; r: number; id: Side } {
+  const n = neighbor(piece.q, piece.r, side);
+  return { q: n.q, r: n.r, id: oppositeSide(side) };
+}
+
+/**
+ * 同じセルで、真下（down のとき）または真上（up のとき）にある一番近いタイル。
+ * 間が空いていてもよい（マーブルはその間を垂直に落ちる）。
+ */
+function nearestVertical(index: CourseIndex, piece: Piece, port: WorldPort): Piece | null {
+  let best: Piece | null = null;
+  for (const other of index.at(piece.q, piece.r)) {
+    if (other.id === piece.id) continue;
+    if (port.id === 'down') {
+      const top = other.level + getPart(other.type).span;
+      if (top <= port.level && (!best || top > best.level + getPart(best.type).span)) best = other;
+    } else if (other.level >= port.level && (!best || other.level < best.level)) {
+      best = other;
+    }
+  }
+  return best;
 }
 
 /**
  * 接続口の接続先を探す。
- * 辺の接続口は「隣のセルの向かい合う辺」に、up/down は「同じセルの down/up」に、
- * 絶対レベルが一致する接続口があるときだけつながっているとみなす。
+ * 辺の接続口は「隣のセルの向かい合う辺」に、絶対レベルが一致する接続口があるときだけつながる。
+ * down は「同じセルで真下にある一番近いタイルの up」に、up は「真上にある一番近いタイルの down」に、
+ * 間に隙間があってもつながる（落下口から下のタイルへ落とすため）。
  */
 export function findConnection(index: CourseIndex, piece: Piece, port: WorldPort): PortRef | null {
-  const t = matchingTarget(piece, port);
+  if (port.id === 'up' || port.id === 'down') {
+    const other = nearestVertical(index, piece, port);
+    if (!other) return null;
+    const want = port.id === 'down' ? 'up' : 'down';
+    const op = worldPorts(other).find((p) => p.id === want);
+    if (!op) return null;
+    // 受け口はそのタイルの上面（up）/ 底面（down）にあること
+    const ok = want === 'up' ? op.level === other.level + getPart(other.type).span : op.level === other.level;
+    return ok ? { piece: other, port: op } : null;
+  }
+  const t = facingSide(piece, port.id);
   for (const other of index.at(t.q, t.r)) {
     if (other.id === piece.id) continue;
     for (const op of worldPorts(other)) {
