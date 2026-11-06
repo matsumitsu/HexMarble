@@ -1,8 +1,9 @@
 import * as THREE from 'three';
-import { HEX_SIZE, TRACK_Y } from '../core/constants';
+import { HEX_SIZE, LEVEL_HEIGHT, TRACK_Y } from '../core/constants';
 import { hexCorner } from '../core/hex';
-import { getPart, type PartType } from '../core/parts';
-import { DROP_HOLE_RADIUS, DROP_HOLE_RIM, plateTop, PLATE_TOP, surfaceHeight } from './tileSurface';
+import { getPart, JUMP_RAMP, LOOP_RADIUS, SPIRAL_RADIUS, type PartType } from '../core/parts';
+import type { Vec3 } from '../core/path';
+import { AXIS_OFFSET, decksOf, DROP_HOLE_RADIUS, DROP_HOLE_RIM, GROOVE_RADIUS, holeRadius, plateTop, PLATE_TOP, surfaceHeight } from './tileSurface';
 
 /** 土台の六角形の大きさ（隣のタイルとのすき間を少しあける） */
 const PLATE_SIZE = HEX_SIZE * 0.97;
@@ -51,7 +52,8 @@ export function hexShape(size: number): THREE.Shape {
  * 土台の板を作る。上面は tileSurface の高さマップで、経路に沿ったハーフパイプを彫り込んだ形になる。
  * 六角形を中心から6つの三角形に分け、それぞれを細かい三角形の格子に分割して高さを与える。
  */
-function buildPlateGeometry(type: PartType): THREE.BufferGeometry {
+function buildPlateGeometry(type: PartType, deck = 0): THREE.BufferGeometry {
+  const deckBase = deck * LEVEL_HEIGHT;
   const base = new THREE.Color(getPart(type).color);
   const pos: number[] = [];
   const col: number[] = [];
@@ -85,35 +87,35 @@ function buildPlateGeometry(type: PartType): THREE.BufferGeometry {
     }
   }
 
-  // 落下口：穴の中の三角形を除き、穴にかかる頂点を穴の縁に寄せる
-  const hole = type === 'drop';
+  // 穴のある段：穴の中の三角形を除き、穴にかかる頂点を穴の縁に寄せる
+  const hole = holeRadius(type, deck);
   const kept = hole
     ? tris.filter(([a, b, c]) => {
         const cx = (xz[a][0] + xz[b][0] + xz[c][0]) / 3;
         const cz = (xz[a][1] + xz[b][1] + xz[c][1]) / 3;
-        return Math.hypot(cx, cz) >= DROP_HOLE_RADIUS;
+        return Math.hypot(cx, cz) >= hole;
       })
     : tris;
   if (hole) {
     for (const p of xz) {
       const r = Math.hypot(p[0], p[1]);
-      if (r < DROP_HOLE_RADIUS && r > 1e-9) {
-        p[0] *= DROP_HOLE_RADIUS / r;
-        p[1] *= DROP_HOLE_RADIUS / r;
+      if (r < hole && r > 1e-9) {
+        p[0] *= hole / r;
+        p[1] *= hole / r;
       }
     }
   }
 
   const tmp = new THREE.Color();
   const heightAt = (x: number, z: number) => {
-    const h = surfaceHeight(type, x, z);
-    return Number.isNaN(h) ? DROP_HOLE_RIM : h;
+    const h = surfaceHeight(type, x, z, deck);
+    return Number.isNaN(h) ? deckBase + DROP_HOLE_RIM : h;
   };
   for (const [x, z] of xz) {
     const y = heightAt(x, z);
     pos.push(x, y, z);
     // 溝の中ほど少し暗くして、くぼみを見やすくする
-    const depth = Math.min(1, Math.max(0, (plateTop(type, x) - y) / 0.17));
+    const depth = Math.min(1, Math.max(0, (plateTop(type, x, deck) - y) / 0.17));
     tmp.copy(base).multiplyScalar(1 - 0.38 * depth);
     col.push(tmp.r, tmp.g, tmp.b);
   }
@@ -148,8 +150,8 @@ function buildPlateGeometry(type: PartType): THREE.BufferGeometry {
       const z1 = c0.z + ((c1.z - c0.z) * (k + 1)) / SUBDIV;
       const a = addVertex(x0, heightAt(x0, z0), z0, side);
       const b = addVertex(x1, heightAt(x1, z1), z1, side);
-      const a0 = addVertex(x0, 0, z0, side);
-      const b0 = addVertex(x1, 0, z1, side);
+      const a0 = addVertex(x0, deckBase, z0, side);
+      const b0 = addVertex(x1, deckBase, z1, side);
       pushTri(a, a0, b, null, out);
       pushTri(b, a0, b0, null, out);
     }
@@ -157,11 +159,43 @@ function buildPlateGeometry(type: PartType): THREE.BufferGeometry {
 
   // 底面
   const bottom = new THREE.Color(base).multiplyScalar(0.4);
-  const center = addVertex(0, 0, 0, bottom);
-  for (let s = 0; s < 6; s++) {
-    const a = addVertex(corners[s].x, 0, corners[s].z, bottom);
-    const b = addVertex(corners[s + 1].x, 0, corners[s + 1].z, bottom);
-    pushTri(center, a, b, -1);
+  if (hole) {
+    // 穴のあいた底面：穴の縁から外周まで
+    const n = 48;
+    for (let s = 0; s < 6; s++) {
+      for (let k = 0; k < n / 6; k++) {
+        const t0 = (s * n) / 6 + k;
+        const a0 = (2 * Math.PI * t0) / n;
+        const a1 = (2 * Math.PI * (t0 + 1)) / n;
+        const ia = addVertex(hole * Math.cos(a0), deckBase, -hole * Math.sin(a0), bottom);
+        const ib = addVertex(hole * Math.cos(a1), deckBase, -hole * Math.sin(a1), bottom);
+        const outer = (a: number) => {
+          // 角度 a の方向の六角形の外周
+          const sector = Math.floor((a - Math.PI / 6 + 2 * Math.PI) / (Math.PI / 3)) % 6;
+          const c0 = corners[sector];
+          const c1 = corners[sector + 1];
+          const dx = Math.cos(a);
+          const dz = -Math.sin(a);
+          const ex = c1.x - c0.x;
+          const ez = c1.z - c0.z;
+          const t = (c0.x * dz - c0.z * dx) / (ez * dx - ex * dz);
+          return [c0.x + ex * t, c0.z + ez * t];
+        };
+        const [oax, oaz] = outer(a0);
+        const [obx, obz] = outer(a1);
+        const oa = addVertex(oax, deckBase, oaz, bottom);
+        const ob = addVertex(obx, deckBase, obz, bottom);
+        pushTri(ia, oa, ob, -1);
+        pushTri(ia, ob, ib, -1);
+      }
+    }
+  } else {
+    const center = addVertex(0, deckBase, 0, bottom);
+    for (let s = 0; s < 6; s++) {
+      const a = addVertex(corners[s].x, deckBase, corners[s].z, bottom);
+      const b = addVertex(corners[s + 1].x, deckBase, corners[s + 1].z, bottom);
+      pushTri(center, a, b, -1);
+    }
   }
 
   const g = new THREE.BufferGeometry();
@@ -172,10 +206,119 @@ function buildPlateGeometry(type: PartType): THREE.BufferGeometry {
   return g;
 }
 
-/** 経路をくり抜いた土台の板（坂はくさび形） */
-function basePlate(type: PartType): THREE.Mesh {
-  const m = new THREE.Mesh(buildPlateGeometry(type), plateMat);
+/** 経路をくり抜いた土台の板（坂はくさび形）。段が複数あるタイルはすべての段を作る */
+function basePlate(type: PartType): THREE.Group {
+  const g = new THREE.Group();
+  for (const deck of decksOf(type)) {
+    const m = new THREE.Mesh(buildPlateGeometry(type, deck), plateMat);
+    m.receiveShadow = true;
+    m.castShadow = true;
+    g.add(m);
+  }
+  return g;
+}
+
+/** 穴の内壁 */
+function holeWall(type: PartType, radius: number, y0: number, y1: number): THREE.Mesh {
+  const wall = new THREE.Mesh(
+    new THREE.CylinderGeometry(radius, radius, y1 - y0, 32, 1, true),
+    new THREE.MeshStandardMaterial({ color: shade(getPart(type).color, 0.3), roughness: 0.7, side: THREE.DoubleSide }),
+  );
+  wall.position.y = (y0 + y1) / 2;
+  return wall;
+}
+
+const troughMats = new Map<number, THREE.MeshStandardMaterial>();
+function troughMat(color: number): THREE.MeshStandardMaterial {
+  let m = troughMats.get(color);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color: shade(color, 0.85), roughness: 0.5, metalness: 0.05, side: THREE.DoubleSide });
+    troughMats.set(color, m);
+  }
+  return m;
+}
+
+/**
+ * 宙に浮いた区間のハーフパイプ（樋）。土台の溝と同じ半径の半円の断面を経路に沿って掃引する。
+ * openDir は溝の開いている向き（ふつうは真上。ループでは輪の中心）。
+ */
+function troughMesh(points: Vec3[], color: number, openDir: (p: Vec3) => THREE.Vector3 = () => new THREE.Vector3(0, 1, 0)): THREE.Mesh {
+  const K = 12;
+  const inner = GROOVE_RADIUS;
+  const outer = GROOVE_RADIUS + 0.045;
+  const pos: number[] = [];
+  const idx: number[] = [];
+  const n = points.length;
+  const P = points.map((p) => new THREE.Vector3(p.x, p.y, p.z));
+  for (let i = 0; i < n; i++) {
+    const t = P[Math.min(n - 1, i + 1)].clone().sub(P[Math.max(0, i - 1)]).normalize();
+    const up = openDir(points[i]).normalize();
+    up.addScaledVector(t, -up.dot(t)).normalize();
+    const side = new THREE.Vector3().crossVectors(t, up).normalize();
+    const axis = P[i].clone().addScaledVector(up, AXIS_OFFSET);
+    for (const rad of [inner, outer]) {
+      for (let k = 0; k <= K; k++) {
+        const a = (Math.PI * k) / K;
+        const v = axis
+          .clone()
+          .addScaledVector(side, Math.cos(a) * rad)
+          .addScaledVector(up, -Math.sin(a) * rad);
+        pos.push(v.x, v.y, v.z);
+      }
+    }
+  }
+  const ring = 2 * (K + 1);
+  const at = (i: number, layer: number, k: number) => i * ring + layer * (K + 1) + k;
+  for (let i = 0; i < n - 1; i++) {
+    for (let layer = 0; layer < 2; layer++) {
+      for (let k = 0; k < K; k++) {
+        const a = at(i, layer, k);
+        const b = at(i + 1, layer, k);
+        const c = at(i + 1, layer, k + 1);
+        const d = at(i, layer, k + 1);
+        idx.push(a, b, c, a, c, d);
+      }
+    }
+    // 縁（内側と外側をつなぐ）
+    for (const k of [0, K]) {
+      const a = at(i, 0, k);
+      const b = at(i + 1, 0, k);
+      const c = at(i + 1, 1, k);
+      const d = at(i, 1, k);
+      idx.push(a, b, c, a, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, troughMat(color));
+  m.castShadow = true;
   m.receiveShadow = true;
+  return m;
+}
+
+/** 条件を満たす点が続く区間ごとに分ける（前後に1点ずつ重ねて、土台の溝と隙間なくつなぐ） */
+function runs(points: Vec3[], keep: (p: Vec3) => boolean): Vec3[][] {
+  const out: Vec3[][] = [];
+  let cur: Vec3[] = [];
+  points.forEach((p, i) => {
+    if (keep(p)) {
+      if (cur.length === 0 && i > 0) cur.push(points[i - 1]);
+      cur.push(p);
+    } else if (cur.length > 0) {
+      cur.push(p);
+      out.push(cur);
+      cur = [];
+    }
+  });
+  if (cur.length > 1) out.push(cur);
+  return out;
+}
+
+function post(x: number, z: number, y0: number, y1: number, radius = 0.035): THREE.Mesh {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, y1 - y0, 10), metalMat());
+  m.position.set(x, (y0 + y1) / 2, z);
   m.castShadow = true;
   return m;
 }
@@ -236,6 +379,140 @@ const BUILDERS: Record<PartType, Builder> = {
   slope(g) {
     g.add(basePlate('slope'));
   },
+  steep(g) {
+    g.add(basePlate('steep'));
+  },
+  spiral(g) {
+    g.add(basePlate('spiral'));
+    const color = getPart('spiral').color;
+    const pts = getPart('spiral').routes[0].points;
+    for (const run of runs(pts, (p) => p.y > TRACK_Y + 0.07)) g.add(troughMesh(run, color));
+    const top = 3 * LEVEL_HEIGHT;
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(SPIRAL_RADIUS - GROOVE_RADIUS - 0.06, SPIRAL_RADIUS - GROOVE_RADIUS - 0.04, top - PLATE_TOP, 20), mat(shade(color, 0.7), { rough: 0.5 }));
+    col.position.y = (top + PLATE_TOP) / 2;
+    col.castShadow = true;
+    g.add(col);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 10), mat(color, { emissive: shade(color, 0.3), rough: 0.3 }));
+    cap.position.y = top;
+    g.add(cap);
+  },
+  funnel(g) {
+    g.add(basePlate('funnel'));
+    g.add(holeWall('funnel', holeRadius('funnel'), 0, surfaceHeight('funnel', holeRadius('funnel'), 0)));
+  },
+  booster(g) {
+    g.add(basePlate('booster'));
+    const color = 0xffe066;
+    for (const z of [-0.3, 0.3]) {
+      for (const x of [-0.4, 0, 0.4]) {
+        const m = arrowMark(color, x);
+        m.position.z = z;
+        g.add(m);
+      }
+    }
+  },
+  brake(g) {
+    g.add(basePlate('brake'));
+    const geo = new THREE.BoxGeometry(0.07, 0.014, 0.16);
+    const dark = mat(0x222222, { rough: 0.8 });
+    const light = mat(0xffd166, { rough: 0.6 });
+    for (const z of [-0.33, 0.33]) {
+      for (let i = 0; i < 7; i++) {
+        const m = new THREE.Mesh(geo, i % 2 ? dark : light);
+        m.position.set(-0.45 + i * 0.15, PLATE_TOP + 0.007, z);
+        g.add(m);
+      }
+    }
+  },
+  loop(g) {
+    g.add(basePlate('loop'));
+    const color = getPart('loop').color;
+    const pts = getPart('loop').routes[0].points;
+    const center = (p: Vec3) => new THREE.Vector3(0, TRACK_Y + LOOP_RADIUS, p.z);
+    for (const run of runs(pts, (p) => p.y > TRACK_Y + 0.03)) {
+      g.add(troughMesh(run, color, (p) => center(p).sub(new THREE.Vector3(p.x, p.y, p.z))));
+    }
+  },
+  lift(g) {
+    g.add(basePlate('lift'));
+    const color = getPart('lift').color;
+    const top = 2 * LEVEL_HEIGHT;
+    g.add(holeWall('lift', holeRadius('lift', 2), top, top + DROP_HOLE_RIM));
+    // 上の段を支える柱
+    for (const a of [90, 150, 210, 270]) {
+      const r = (a * Math.PI) / 180;
+      g.add(post(0.75 * Math.cos(r), -0.75 * Math.sin(r), PLATE_TOP, top, 0.05));
+    }
+    // 昇降路のレール
+    for (const [x, z] of [[0.15, 0.15], [0.15, -0.15], [-0.15, 0.15], [-0.15, -0.15]]) g.add(post(x, z, PLATE_TOP, top, 0.015));
+    const car = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.03, 20), mat(color, { emissive: shade(color, 0.3), rough: 0.4 }));
+    car.name = 'liftCar';
+    car.userData.y0 = PLATE_TOP - 0.02;
+    car.userData.y1 = top + PLATE_TOP - 0.1;
+    car.position.y = car.userData.y0;
+    g.add(car);
+  },
+  jump(g) {
+    g.add(basePlate('jump'));
+    const { x0, radius, angle } = JUMP_RAMP;
+    const lipX = x0 + radius * Math.sin(angle);
+    const m = arrowMark(0xffffff, (lipX + 0.866) / 2);
+    m.position.z = 0;
+    g.add(m);
+  },
+  warp(g) {
+    g.add(basePlate('warp'));
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.035, 10, 32), new THREE.MeshStandardMaterial({ color: 0x888888, emissive: 0x333333, roughness: 0.3 }));
+    ring.name = 'portal';
+    ring.rotation.y = Math.PI / 2;
+    ring.position.set(0, TRACK_Y + 0.05, 0);
+    g.add(ring);
+    const core = new THREE.Mesh(
+      new THREE.CircleGeometry(0.17, 24),
+      new THREE.MeshBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    core.name = 'portalCore';
+    core.rotation.y = Math.PI / 2;
+    core.position.copy(ring.position);
+    g.add(core);
+  },
+  chime(g) {
+    g.add(basePlate('chime'));
+    const color = getPart('chime').color;
+    const barY = 0.74;
+    g.add(post(0, -0.32, PLATE_TOP, barY), post(0, 0.32, PLATE_TOP, barY));
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 10), metalMat());
+    bar.rotation.x = Math.PI / 2;
+    bar.position.y = barY;
+    g.add(bar);
+    const bell = new THREE.Group();
+    bell.name = 'bell';
+    bell.position.y = barY;
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.2, 14), mat(color, { metal: 0.8, rough: 0.2, emissive: shade(color, 0.15) }));
+    tube.position.y = -0.13;
+    tube.castShadow = true;
+    bell.add(tube);
+    g.add(bell);
+  },
+  seesaw(g) {
+    g.add(basePlate('seesaw'));
+    const color = getPart('seesaw').color;
+    const px = 0.45;
+    const py = 0.58;
+    g.add(post(px, 0, PLATE_TOP, py, 0.03));
+    const plank = new THREE.Group();
+    plank.name = 'plank';
+    plank.position.set(px, py, 0);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.035, 0.9), mat(color, { rough: 0.4, emissive: shade(color, 0.2) }));
+    beam.castShadow = true;
+    plank.add(beam);
+    for (const z of [-0.42, 0.42]) {
+      const cup = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), metalMat());
+      cup.position.set(0, -0.005, z);
+      plank.add(cup);
+    }
+    g.add(plank);
+  },
   splitter(g) {
     g.add(basePlate('splitter'));
     const color = getPart('splitter').color;
@@ -253,13 +530,7 @@ const BUILDERS: Record<PartType, Builder> = {
   },
   drop(g) {
     g.add(basePlate('drop'));
-    // 穴の内壁
-    const wall = new THREE.Mesh(
-      new THREE.CylinderGeometry(DROP_HOLE_RADIUS, DROP_HOLE_RADIUS, DROP_HOLE_RIM, 32, 1, true),
-      new THREE.MeshStandardMaterial({ color: shade(getPart('drop').color, 0.3), roughness: 0.7, side: THREE.DoubleSide }),
-    );
-    wall.position.y = DROP_HOLE_RIM / 2;
-    g.add(wall);
+    g.add(holeWall('drop', DROP_HOLE_RADIUS, 0, DROP_HOLE_RIM));
   },
   goal(g) {
     g.add(basePlate('goal'));

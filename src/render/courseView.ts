@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { BALL_RADIUS, GRID_RADIUS, HEX_SIZE, LEVEL_HEIGHT } from '../core/constants';
 import { analyzeConnections } from '../core/connections';
-import type { Course, Piece } from '../core/course';
+import { warpPairs, type Course, type Piece } from '../core/course';
 import { axialToWorld, cellsInRadius, hexCorner, type Axial } from '../core/hex';
 import { getPart, portLocalPosition, type PartType } from '../core/parts';
 import { Fireworks } from './fireworks';
@@ -21,7 +21,13 @@ interface PieceEntry {
   group: THREE.Group;
 }
 
-const sigOf = (p: Piece) => `${p.type}|${p.q}|${p.r}|${p.level}|${p.rot}`;
+const sigOf = (p: Piece, warpPair: string) => `${p.type}|${p.q}|${p.r}|${p.level}|${p.rot}|${warpPair}`;
+
+/** ワープの組ごとの色。組の相手がいないワープは灰色 */
+const WARP_COLORS = [0x4cc9f0, 0xf72585, 0x80ed99, 0xffd166, 0xb388eb, 0xff8c42];
+export function warpColor(pair: number | null): number {
+  return pair === null ? 0x666c78 : WARP_COLORS[pair % WARP_COLORS.length];
+}
 
 /** コースの3D表示。ロジックは持たず、渡された状態を描くだけ */
 export class CourseView {
@@ -114,9 +120,12 @@ export class CourseView {
   /** コースの変化分だけメッシュを作り直す */
   syncCourse(course: Course, showPorts: boolean): void {
     const alive = new Set<number>();
+    const warps = warpPairs(course);
     for (const p of course.pieces) {
       alive.add(p.id);
-      const sig = sigOf(p);
+      const wp = warps.get(p.id);
+      const warpPair = wp ? (wp.partner === null ? null : wp.pair) : null;
+      const sig = sigOf(p, wp ? String(warpPair) : '');
       const e = this.entries.get(p.id);
       if (e && e.sig === sig) continue;
       if (e) this.piecesRoot.remove(e.group);
@@ -126,6 +135,7 @@ export class CourseView {
       group.rotation.y = (p.rot * Math.PI) / 3;
       group.userData.pieceId = p.id;
       group.traverse((o) => (o.userData.pieceId = p.id));
+      if (wp) this.paintWarp(group, warpColor(warpPair));
       this.piecesRoot.add(group);
       this.entries.set(p.id, { sig, group });
     }
@@ -136,6 +146,29 @@ export class CourseView {
       }
     }
     this.updatePortMarkers(course, showPorts);
+  }
+
+  /** ワープの輪を組の色で塗る（タイルごとに材質を複製する） */
+  private paintWarp(group: THREE.Group, color: number): void {
+    const ring = group.getObjectByName('portal') as THREE.Mesh | undefined;
+    const core = group.getObjectByName('portalCore') as THREE.Mesh | undefined;
+    if (ring) {
+      const m = (ring.material as THREE.MeshStandardMaterial).clone();
+      m.color.setHex(color);
+      m.emissive.setHex(color).multiplyScalar(0.6);
+      ring.material = m;
+    }
+    if (core) {
+      const m = (core.material as THREE.MeshBasicMaterial).clone();
+      m.color.setHex(color);
+      core.material = m;
+    }
+  }
+
+  /** チャイムの鐘を揺らす */
+  ringChime(pieceId: number): void {
+    const bell = this.entries.get(pieceId)?.group.getObjectByName('bell');
+    if (bell) bell.userData.ringAt = this.time;
   }
 
   /** つながっていない接続口に印を付ける */
@@ -209,9 +242,17 @@ export class CourseView {
     }
   }
 
-  /** 分岐タイルの羽根の向きを、次にマーブルが向かう出口に合わせる */
+  /** 分岐タイルの羽根の向きとシーソーの傾きを、次にマーブルが向かう出口に合わせる */
   setSplitterStates(course: Course, toggles: ReadonlyMap<number, number>): void {
     for (const p of course.pieces) {
+      if (p.type === 'seesaw') {
+        const plank = this.entries.get(p.id)?.group.getObjectByName('plank');
+        if (!plank) continue;
+        // 次の出口（0: 辺1 = -z 側, 1: 辺5 = +z 側）の側を低くする
+        const target = (toggles.get(p.id) ?? 0) % 2 === 0 ? -0.22 : 0.22;
+        plank.rotation.x += (target - plank.rotation.x) * 0.25;
+        continue;
+      }
       if (p.type !== 'splitter') continue;
       const flipper = this.entries.get(p.id)?.group.getObjectByName('flipper');
       if (!flipper) continue;
@@ -247,6 +288,18 @@ export class CourseView {
         gem.rotation.y = this.time * 1.5;
         gem.position.y = (gem.userData.baseY as number) + Math.sin(this.time * 2) * 0.05;
       }
+      const bell = e.group.getObjectByName('bell');
+      if (bell) {
+        const t = this.time - ((bell.userData.ringAt as number | undefined) ?? -99);
+        bell.rotation.x = t < 3 ? Math.sin(t * 18) * 0.5 * Math.exp(-t * 2.2) : 0;
+      }
+      const car = e.group.getObjectByName('liftCar');
+      if (car) {
+        const k = 0.5 - 0.5 * Math.cos(this.time * 1.6);
+        car.position.y = car.userData.y0 + (car.userData.y1 - car.userData.y0) * k;
+      }
+      const core = e.group.getObjectByName('portalCore');
+      if (core) core.scale.setScalar(0.85 + 0.15 * Math.sin(this.time * 4));
     }
     this.fireworks.update(dt);
   }

@@ -23,6 +23,7 @@ import { sampleCourse } from './core/sampleCourse';
 import { FAIL_MESSAGES } from './core/simulation';
 import { CourseView, type CellHighlight } from './render/courseView';
 import { createScene, type SceneContext } from './render/scene';
+import { ChimeSound } from './render/sound';
 import { downloadJson, loadFromLocal, readJsonFile, saveToLocal } from './storage';
 import { Ui, type Mode } from './ui/ui';
 
@@ -54,6 +55,7 @@ export class App {
   private hold: { x: number; y: number; pieceId: number; timer: number } | null = null;
   private lastTime = performance.now();
   private highlightsDirty = true;
+  private readonly sound = new ChimeSound();
 
   constructor(root: HTMLElement) {
     this.ui = new Ui(root, {
@@ -83,6 +85,11 @@ export class App {
           .catch((e: Error) => this.ui.toast(`読み込めませんでした：${e.message}`, 'error')),
       onNew: () => this.replaceCourse(emptyCourse(), '新しいコースです'),
       onSample: () => this.replaceCourse(sampleCourse(), 'サンプルコースを読み込みました'),
+      onToggleSound: () => {
+        this.sound.enabled = !this.sound.enabled;
+        this.sound.unlock();
+        this.ui.setSound(this.sound.enabled);
+      },
     });
     this.ctx = createScene(this.ui.viewport);
     this.view = new CourseView(this.ctx.scene);
@@ -96,6 +103,10 @@ export class App {
     this.history = new History(initial);
     this.launcher = new AutoLauncher(initial);
     this.bindInput();
+    // ブラウザの自動再生制限のため、最初の操作で音を出せるようにする
+    const unlock = () => this.sound.unlock();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
     this.onCourseChanged();
     requestAnimationFrame(this.frame);
   }
@@ -354,6 +365,8 @@ export class App {
         return { text: `走行中 ${s.time.toFixed(2)} 秒${suffix}`, kind: 'running' };
       case 'falling':
         return { text: `落下中…${suffix}`, kind: 'failed' };
+      case 'flying':
+        return { text: `ジャンプ中 ${s.time.toFixed(2)} 秒${suffix}`, kind: 'running' };
       case 'success':
         return { text: `ゴール ${(s.goalTime ?? s.time).toFixed(2)} 秒`, kind: 'success' };
       case 'failed':
@@ -531,6 +544,12 @@ export class App {
         if (e.type === 'goal') {
           const goal = getPiece(this.course, e.pieceId);
           if (goal) this.view.launchFireworks(goal);
+        } else if (e.type === 'chime') {
+          const chime = getPiece(this.course, e.pieceId);
+          if (chime) {
+            this.view.ringChime(chime.id);
+            this.sound.play(chime.level);
+          }
         }
       }
       if (this.mode === 'run') this.refreshUi();
