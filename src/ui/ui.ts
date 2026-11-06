@@ -58,7 +58,6 @@ export class Ui {
   private readonly speedSel: HTMLSelectElement;
   private readonly status: HTMLElement;
   private readonly toastEl: HTMLElement;
-  private readonly holdRing: HTMLElement;
   private toastTimer = 0;
   private readonly soundBtn: HTMLButtonElement;
 
@@ -109,7 +108,7 @@ export class Ui {
     });
     this.palette.append(grid);
     this.palette.append(
-      h('p', { className: 'hint', innerHTML: '<b>R</b> 回転（<b>Shift</b>で逆）<br><b>E</b> レベルを上げる（<b>Shift</b>で下げる）<br><b>Q</b> スポイト / 設置をやめる<br><b>右長押し</b> タイルを削除<br><b>緑</b>のセルは既存のコースとつながる場所' }),
+      h('p', { className: 'hint', innerHTML: '<b>R</b> 回転（<b>Shift</b>で逆）<br><b>E</b> / <b>Q</b> レベルを上げる / 下げる<br><b>C</b> スポイト / 設置をやめる<br><b>右クリック</b> タイルを削除<br><b>緑</b>のセルは既存のコースとつながる場所' }),
     );
 
     // インスペクタ
@@ -125,7 +124,7 @@ export class Ui {
         button('⟲', '左に60°回転 (Shift+R)', () => H.onRotate(1)),
         button('⟳', '右に60°回転 (R)', () => H.onRotate(-1)),
         button('▲ 上げる', '1レベル上げる (E / PageUp / ])', H.onRaise),
-        button('▼ 下げる', '1レベル下げる (Shift+E / PageDown / [)', H.onLower),
+        button('▼ 下げる', '1レベル下げる (Q / PageDown / [)', H.onLower),
         button('削除', '削除 (Delete)', H.onDelete, 'danger'),
       ),
     );
@@ -148,15 +147,11 @@ export class Ui {
 
     this.viewport = h('div', { className: 'viewport' });
     this.toastEl = h('div', { className: 'toast' });
-    this.holdRing = h('div', {
-      className: 'hold-ring',
-      innerHTML: '<svg viewBox="0 0 40 40"><circle class="track" cx="20" cy="20" r="16"/><circle class="bar" cx="20" cy="20" r="16" pathLength="100"/></svg>',
-    });
     const help = h('div', {
       className: 'help',
-      innerHTML: 'WASD: 移動 ・ 左ドラッグ: 回転 ・ 右ドラッグ: パン ・ ホイール: ズーム ・ E / Shift+E: レベル上下 ・ 右長押し: 削除 ・ Q: スポイト / 設置終了 ・ Tab: 編集/実行 ・ Ctrl+Z / Ctrl+Y: 元に戻す / やり直す',
+      innerHTML: 'WASD: 移動 ・ 左ドラッグ: 回転 ・ 右ドラッグ: パン ・ ホイール: ズーム ・ E / Q: レベル上げ / 下げ ・ 右クリック: 削除 ・ C: スポイト / 設置終了 ・ Tab: 編集/実行 ・ Ctrl+Z / Ctrl+Y: 元に戻す / やり直す',
     });
-    root.append(header, h('main', { className: 'stage' }, this.viewport, this.palette, this.inspector, this.runPanel, this.holdRing, this.toastEl, help));
+    root.append(header, h('main', { className: 'stage' }, this.viewport, this.palette, this.inspector, this.runPanel, this.toastEl, help));
   }
 
   private toolButton(tool: PartType | 'select', icon: string, name: string, key: string, desc: string): HTMLButtonElement {
@@ -212,18 +207,4 @@ export class Ui {
     this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('show'), 2200);
   }
 
-  /** 右長押しの進み具合を示すリング（ビューポート内のクライアント座標） */
-  showHold(clientX: number, clientY: number, ms: number): void {
-    const rect = this.viewport.getBoundingClientRect();
-    this.holdRing.style.left = `${clientX - rect.left}px`;
-    this.holdRing.style.top = `${clientY - rect.top}px`;
-    this.holdRing.style.setProperty('--hold-ms', `${ms}ms`);
-    this.holdRing.classList.remove('show');
-    void this.holdRing.offsetWidth; // アニメーションを再始動
-    this.holdRing.classList.add('show');
-  }
-
-  hideHold(): void {
-    this.holdRing.classList.remove('show');
-  }
 }

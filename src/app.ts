@@ -27,9 +27,7 @@ import { ChimeSound } from './render/sound';
 import { downloadJson, loadFromLocal, readJsonFile, saveToLocal } from './storage';
 import { Ui, type Mode } from './ui/ui';
 
-/** 右クリック長押しで削除するまでの時間 [ms] */
-const HOLD_TO_DELETE_MS = 500;
-/** これ以上ポインタが動いたらクリック・長押しではなくドラッグとみなす [px] */
+/** これ以上ポインタが動いたらクリックではなくドラッグとみなす [px] */
 const DRAG_THRESHOLD = 6;
 
 export class App {
@@ -41,7 +39,7 @@ export class App {
   private mode: Mode = 'edit';
   private tool: PartType | null = null;
   private ghostRot = 0;
-  /** 設置モードで E / Shift+E で指定した設置レベル（null ならセルの最上部） */
+  /** 設置モードで E / Q で指定した設置レベル（null ならセルの最上部） */
   private placeLevel: number | null = null;
   private selectedId: number | null = null;
   private hoverCell: Axial | null = null;
@@ -52,7 +50,7 @@ export class App {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private downAt: { x: number; y: number } | null = null;
-  private hold: { x: number; y: number; pieceId: number; timer: number } | null = null;
+  private rightDownAt: { x: number; y: number } | null = null;
   private lastTime = performance.now();
   private highlightsDirty = true;
   private readonly sound = new ChimeSound();
@@ -182,7 +180,7 @@ export class App {
     if (target) this.apply(rotatePiece(this.course, target.id, delta), false);
   }
 
-  /** E キー。カーソル下のタイル（なければ選択中のタイル）を1レベル上げる / 下げる */
+  /** E / Q キー。カーソル下のタイル（なければ選択中のタイル）を1レベル上げる / 下げる */
   private levelKey(up: boolean): void {
     if (this.tool) {
       const cell = this.hoverCell;
@@ -232,7 +230,7 @@ export class App {
     camera.position.add(move);
   }
 
-  /** Q キー。設置モードなら終了し、そうでなければカーソル下のタイルを種類・向きごと拾う */
+  /** C キー。設置モードなら終了し、そうでなければカーソル下のタイルを種類・向きごと拾う */
   private eyedropper(): void {
     if (this.tool) {
       this.setTool(null);
@@ -323,7 +321,7 @@ export class App {
     if (this.mode === mode) return;
     this.mode = mode;
     this.downAt = null;
-    this.cancelHold();
+    this.rightDownAt = null;
     if (mode === 'run') {
       this.hoverCell = null;
       this.hoverPieceId = null;
@@ -413,31 +411,9 @@ export class App {
     return { cell: null, pieceId: null };
   }
 
-  private startHold(ev: PointerEvent): void {
-    this.cancelHold();
-    const { pieceId } = this.pick(ev);
-    if (pieceId === null) return;
-    const timer = window.setTimeout(() => {
-      const h = this.hold;
-      this.hold = null;
-      this.ui.hideHold();
-      if (h && getPiece(this.course, h.pieceId)) this.deletePiece(h.pieceId);
-    }, HOLD_TO_DELETE_MS);
-    this.hold = { x: ev.clientX, y: ev.clientY, pieceId, timer };
-    this.ui.showHold(ev.clientX, ev.clientY, HOLD_TO_DELETE_MS);
-  }
-
-  private cancelHold(): void {
-    if (!this.hold) return;
-    clearTimeout(this.hold.timer);
-    this.hold = null;
-    this.ui.hideHold();
-  }
-
   private bindInput(): void {
     const el = this.ctx.renderer.domElement;
     el.addEventListener('pointermove', (ev) => {
-      if (this.hold && Math.hypot(ev.clientX - this.hold.x, ev.clientY - this.hold.y) > DRAG_THRESHOLD) this.cancelHold();
       if (this.mode !== 'edit') return;
       const { cell, pieceId } = this.pick(ev);
       const inGrid = cell && this.view.cells.some((c) => c.q === cell.q && c.r === cell.r) ? cell : null;
@@ -450,16 +426,27 @@ export class App {
     el.addEventListener('pointerleave', () => {
       this.hoverCell = null;
       this.hoverPieceId = null;
-      this.cancelHold();
       this.updateGhost();
     });
     el.addEventListener('pointerdown', (ev) => {
       if (ev.button === 0) this.downAt = { x: ev.clientX, y: ev.clientY };
-      if (ev.button === 2 && this.mode === 'edit') this.startHold(ev);
+      if (ev.button === 2) this.rightDownAt = { x: ev.clientX, y: ev.clientY };
     });
-    el.addEventListener('pointercancel', () => this.cancelHold());
+    el.addEventListener('pointercancel', () => {
+      this.downAt = null;
+      this.rightDownAt = null;
+    });
     el.addEventListener('pointerup', (ev) => {
-      if (ev.button === 2) this.cancelHold();
+      if (ev.button === 2) {
+        // 右クリック（ドラッグせずに離した）でカーソル下のタイルを削除。右ドラッグはパン
+        const r = this.rightDownAt;
+        this.rightDownAt = null;
+        if (r && this.mode === 'edit' && Math.hypot(ev.clientX - r.x, ev.clientY - r.y) <= DRAG_THRESHOLD) {
+          const { pieceId } = this.pick(ev);
+          if (pieceId !== null) this.deletePiece(pieceId);
+        }
+        return;
+      }
       const d = this.downAt;
       this.downAt = null;
       if (ev.button !== 0 || !d || this.mode !== 'edit') return;
@@ -504,10 +491,12 @@ export class App {
         else if (key === 'Escape') this.setMode('edit');
       } else if (lower === 'r') {
         this.rotateKey(ev.shiftKey ? 1 : -1);
-      } else if (lower === 'q') {
+      } else if (lower === 'c') {
         this.eyedropper();
       } else if (lower === 'e') {
-        this.levelKey(!ev.shiftKey);
+        this.levelKey(true);
+      } else if (lower === 'q') {
+        this.levelKey(false);
       } else if (key === 'Delete' || key === 'Backspace') {
         ev.preventDefault();
         if (this.selectedId !== null) this.deletePiece(this.selectedId);
