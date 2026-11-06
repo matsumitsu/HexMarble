@@ -31,6 +31,11 @@ function toWorld<T extends string | number>(id: T, rot: number): T {
 }
 
 /** ジャンプ台から飛んできたマーブルを受け止める高さ（マーブルの中心）。土台の上面にマーブルが触れる高さ */
+/** ジャンプ中のマーブルが経路に着地できる、経路からの水平距離 */
+export const LANDING_RADIUS = 0.2;
+/** 経路に着地したとき、経路に垂直な速度成分のうち進行方向の速さとして残る割合 */
+export const LANDING_KEEP = 0.3;
+
 export function catchHeight(piece: Piece): number {
   return (piece.level + getPart(piece.type).span - 1) * LEVEL_HEIGHT + LEVEL_HEIGHT / 2 + BALL_RADIUS;
 }
@@ -239,6 +244,19 @@ export class Simulation {
           }
         }
       }
+      // 溝（経路）の真上なら、経路の高さを下向きに通り抜けたときに着地する
+      const land = this.findLanding(p, prevY, y);
+      if (land === 'above') continue;
+      if (land) {
+        this.status = 'rolling';
+        this.events.push({ time: this.time, type: 'land', pieceId: p.id });
+        this.enter(p, land.route, land.s);
+        // 着地前の速度のうち、経路の進行方向の成分は残り、それ以外（ぶつかる向き）の成分は一部だけ残る
+        const v = this.fallVel;
+        const impact = Math.sqrt(Math.max(0, v.x * v.x + v.y * v.y + v.z * v.z - land.along * land.along));
+        this.speed = land.along > 0 ? land.along + LANDING_KEEP * impact : 0;
+        return;
+      }
       if (y < top && y > p.level * LEVEL_HEIGHT - BALL_RADIUS) {
         this.fail('crashed');
         return;
@@ -246,6 +264,47 @@ export class Simulation {
     }
     if (y < BALL_RADIUS) this.fail('crashed');
     else if (this.fallTime > 8) this.fail('fell');
+  }
+
+  /**
+   * ジャンプ中のマーブルがタイル p の経路に着地するかを調べる。
+   * - 経路を下向きに通り抜けたら、その位置と、進行方向の速度成分が最も大きい経路を返す
+   * - 経路の真上にいてまだ通り抜けていなければ 'above'（溝に向かって落ちている最中なので、ぶつかった扱いにしない）
+   * - どちらでもなければ null
+   */
+  private findLanding(
+    p: Piece,
+    prevY: number,
+    y: number,
+  ): { route: WorldRoute; s: number; along: number } | 'above' | null {
+    const { x, z } = this.position;
+    const v = this.fallVel;
+    let best: { route: WorldRoute; s: number; along: number } | null = null;
+    let above = false;
+    for (const route of this.routesOf(p)) {
+      if (route.from === 'up' || route.def.loop) continue; // 縦の落下区間とループの内側には乗らない
+      const pts = route.poly.pts;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[i + 1];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const h2 = dx * dx + dz * dz;
+        if (h2 < 1e-10) continue; // 垂直な区間
+        const t = Math.min(1, Math.max(0, ((x - a.x) * dx + (z - a.z) * dz) / h2));
+        if (Math.hypot(a.x + dx * t - x, a.z + dz * t - z) > LANDING_RADIUS) continue;
+        const ry = a.y + (b.y - a.y) * t;
+        if (prevY < ry) continue; // 経路より下にいる（別の段など）
+        if (y >= ry) {
+          above = true;
+          continue;
+        }
+        const len = route.poly.cum[i + 1] - route.poly.cum[i];
+        const along = (v.x * dx + v.y * (b.y - a.y) + v.z * dz) / len;
+        if (!best || along > best.along) best = { route, s: route.poly.cum[i] + len * t, along };
+      }
+    }
+    return best ?? (above ? 'above' : null);
   }
 
   /** 同じ入口の経路が複数あれば、通るたびに交互に選ぶ（分岐） */

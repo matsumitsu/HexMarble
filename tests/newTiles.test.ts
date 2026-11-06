@@ -94,6 +94,48 @@ describe('新しいタイル', () => {
     expect(entered).toEqual([1, 2, 4, 3]);
   });
 
+  /** ジャンプして着地した直後の速さと、着地直前の速さ */
+  function landing(steps: Steps) {
+    const sim = new Simulation(buildCourse(steps));
+    let before = 0;
+    let after: number | null = null;
+    while (!sim.finished) {
+      const flying = sim.status === 'flying';
+      sim.step();
+      const v = (sim as unknown as { fallVel: { x: number; y: number; z: number } }).fallVel;
+      if (flying && sim.status === 'flying') before = Math.hypot(v.x, v.y, v.z);
+      if (flying && sim.status === 'rolling' && after === null) after = sim.speed;
+    }
+    return { sim, before, after };
+  }
+
+  it('ジャンプ台から直線や坂の溝にも着地して、そのまま進む', () => {
+    const straight = landing([['start', 0, 0, 0, 3], ['jump', 1, 0, 0, 3], ['straight', 2, 0, 0, 0], ['goal', 3, 0]]);
+    expect(straight.sim.status).toBe('success');
+    expect(straight.sim.events.filter((e) => e.type === 'land').map((e) => e.pieceId)).toEqual([3]);
+    const slope = landing([['start', 0, 0, 0, 3], ['jump', 1, 0, 0, 3], ['slope', 2, 0, 3, 0], ['goal', 3, 0]]);
+    expect(slope.sim.status).toBe('success');
+    expect(slope.sim.events.map((e) => e.type)).toContain('land');
+  });
+
+  it('着地後の速さは着地前の速さに応じる（速く落ちてくるほど速い）', () => {
+    const speeds = [1, 2, 3].map((L) => landing([['start', 0, 0, 0, L], ['jump', 1, 0, 0, L], ['straight', 2, 0, 0, 0], ['goal', 3, 0]]));
+    for (const r of speeds) {
+      expect(r.after).not.toBeNull();
+      expect(r.after!).toBeGreaterThan(0);
+      expect(r.after!).toBeLessThan(r.before + 0.1); // 着地の衝撃で遅くなる
+    }
+    expect(speeds[1].before).toBeGreaterThan(speeds[0].before);
+    expect(speeds[1].after!).toBeGreaterThan(speeds[0].after!);
+    expect(speeds[2].after!).toBeGreaterThan(speeds[1].after!);
+  });
+
+  it('溝から外れた場所に落ちると、タイルにぶつかって失敗', () => {
+    // 60°傾いた直線は、マーブルの落ちる位置と溝がずれる
+    const { sim } = run([['start', 0, 0, 0, 3], ['jump', 1, 0, 0, 3], ['straight', 2, 0, 1, 0]]);
+    expect(sim.failReason).toBe('crashed');
+  });
+
   it('ジャンプが届かず地面に当たると失敗', () => {
     const { sim } = run([['start', 0, 0, 0, 3], ['jump', 1, 0, 0, 3], ['goal', 4, 0, 0, 0]]);
     expect(sim.failReason).toBe('crashed');

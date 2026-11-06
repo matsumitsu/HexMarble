@@ -445,7 +445,7 @@ export const PARTS: Record<PartType, PartDef> = {
   jump: {
     type: 'jump',
     name: 'ジャンプ台',
-    description: '辺3から入ったマーブルを、矢印の向きへ放物線で飛ばす。上に受け口のあるタイル（漏斗・ゴール・落下口・分岐）に入れば着地できる',
+    description: '辺3から入ったマーブルを、矢印の向きへ放物線で飛ばす。直線や坂などの溝の上に落ちれば、そのまま転がり続ける。上に受け口のあるタイル（漏斗・ゴール・落下口・分岐）は広く受け止める',
     color: 0xff9f1c,
     span: 1,
     ports: sidePorts([3]),
