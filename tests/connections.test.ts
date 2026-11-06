@@ -48,7 +48,7 @@ describe('タイル定義', () => {
       for (const route of def.routes) {
         const first = route.points[0];
         const last = route.points[route.points.length - 1];
-        if (route.from !== 'start') {
+        if (route.from !== 'start' && route.from !== 'warp') {
           const port = def.ports.find((p) => p.id === route.from);
           expect(port, `${def.type} from ${route.from}`).toBeDefined();
           const pos = portLocalPosition(port!);
@@ -56,7 +56,7 @@ describe('タイル定義', () => {
           expect(first.y).toBeCloseTo(pos.y);
           expect(first.z).toBeCloseTo(pos.z);
         }
-        if (route.to !== 'goal') {
+        if (route.to !== 'goal' && route.to !== 'air' && route.to !== 'warp') {
           const port = def.ports.find((p) => p.id === route.to);
           expect(port, `${def.type} to ${route.to}`).toBeDefined();
           const pos = portLocalPosition(port!);

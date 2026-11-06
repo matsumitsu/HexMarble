@@ -15,6 +15,7 @@ export interface LaunchResult {
 export type LauncherEvent =
   | { type: 'launch' }
   | { type: 'goal'; pieceId: number; time: number }
+  | { type: 'chime'; pieceId: number }
   | { type: 'end'; result: LaunchResult };
 
 /**
@@ -30,6 +31,8 @@ export class AutoLauncher {
   private wait = 0;
   private goalReported = false;
   private endReported = false;
+  /** sim.events のうち、すでに伝えた件数 */
+  private eventCursor = 0;
 
   constructor(
     public course: Course,
@@ -53,6 +56,7 @@ export class AutoLauncher {
     this.wait = 0;
     this.goalReported = false;
     this.endReported = false;
+    this.eventCursor = 0;
     if (sim.failReason === 'no-start') {
       this.sim = null;
       return [];
@@ -68,6 +72,10 @@ export class AutoLauncher {
     if (!sim) return [];
     const events: LauncherEvent[] = [];
     if (!sim.finished) sim.advance(dt);
+    for (; this.eventCursor < sim.events.length; this.eventCursor++) {
+      const e = sim.events[this.eventCursor];
+      if (e.type === 'chime' && e.pieceId !== undefined) events.push({ type: 'chime', pieceId: e.pieceId });
+    }
 
     if (sim.status === 'success' && !this.goalReported) {
       this.goalReported = true;

@@ -14,8 +14,9 @@ export interface CourseJson {
 }
 
 export function courseToJson(course: Course, name?: string): CourseJson {
+  // 置いた順（id 順）を保つ。ワープの組は置いた順で決まるため
   const pieces = [...course.pieces]
-    .sort((a, b) => a.q - b.q || a.r - b.r || a.level - b.level)
+    .sort((a, b) => a.id - b.id)
     .map(({ type, q, r, level, rot }) => ({ type, q, r, level, rot }));
   return { format: FORMAT, version: FORMAT_VERSION, ...(name ? { name } : {}), pieces };
 }

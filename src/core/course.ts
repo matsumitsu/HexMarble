@@ -118,3 +118,17 @@ export function movePieceLevel(course: Course, id: number, delta: number): EditR
 export const raisePiece = (course: Course, id: number): EditResult => movePieceLevel(course, id, 1);
 /** タイルを1レベル下げる */
 export const lowerPiece = (course: Course, id: number): EditResult => movePieceLevel(course, id, -1);
+
+/**
+ * ワープの組。置いた順（id の小さい順）に2つずつ組にする（1個目と2個目、3個目と4個目…）。
+ * 値は組の相手の id（相手がいなければ null）と、組の番号（0 から）。
+ */
+export function warpPairs(course: Course): Map<number, { partner: number | null; pair: number }> {
+  const warps = course.pieces.filter((p) => p.type === 'warp').sort((a, b) => a.id - b.id);
+  const out = new Map<number, { partner: number | null; pair: number }>();
+  warps.forEach((p, i) => {
+    const mate = warps[i ^ 1];
+    out.set(p.id, { partner: mate ? mate.id : null, pair: i >> 1 });
+  });
+  return out;
+}
