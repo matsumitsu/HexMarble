@@ -127,7 +127,7 @@ export class CourseView {
     this.levelGhostCells = new THREE.InstancedMesh(
       ghostGeo,
       withCursorFade(
-        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide }),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.125, depthWrite: false, side: THREE.DoubleSide }),
         this.ghostFocus,
       ),
       this.cells.length,
@@ -148,7 +148,7 @@ export class CourseView {
     edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edge, 3));
     const edges = new THREE.LineSegments(
       edgeGeo,
-      withCursorFade(new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.16, depthWrite: false }), this.ghostFocus),
+      withCursorFade(new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.18, depthWrite: false }), this.ghostFocus),
     );
     this.levelGhostCells.renderOrder = 1;
     edges.renderOrder = 2;
