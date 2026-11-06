@@ -9,6 +9,37 @@ import { createGhostMesh, createPartMesh, hexShape } from './meshes';
 
 export type CellHighlight = 'none' | 'placeable' | 'connects' | 'blocked';
 
+/** ゴーストを見せる範囲：中心からこの距離までは濃さそのまま、FADE_OUTER で消える */
+const GHOST_FADE_INNER = HEX_SIZE * 1.2;
+const GHOST_FADE_OUTER = HEX_SIZE * 3.6;
+
+/** 材質に、focus（ワールド XZ）から離れるほど透明にする処理を足す */
+function withCursorFade<M extends THREE.Material>(mat: M, focus: { value: THREE.Vector2 }): M {
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.ghostFocus = focus;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vGhostXZ;')
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+        vec4 ghostWorld = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          ghostWorld = instanceMatrix * ghostWorld;
+        #endif
+        ghostWorld = modelMatrix * ghostWorld;
+        vGhostXZ = ghostWorld.xz;`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vGhostXZ;\nuniform vec2 ghostFocus;')
+      .replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+        gl_FragColor.a *= 1.0 - smoothstep(${GHOST_FADE_INNER.toFixed(3)}, ${GHOST_FADE_OUTER.toFixed(3)}, distance(vGhostXZ, ghostFocus));`,
+      );
+  };
+  return mat;
+}
+
 const GHOST_COLORS: Record<CellHighlight, THREE.Color> = {
   none: new THREE.Color(0x35557a),
   placeable: new THREE.Color(0x4a7fc0),
@@ -44,6 +75,8 @@ export class CourseView {
   /** ゴースト：設置モードで、置こうとしているレベルに出す半透明の六角グリッド。配置できるかの色分けもここに出す */
   private readonly levelGhost: THREE.Group;
   private readonly levelGhostCells: THREE.InstancedMesh;
+  /** ゴーストを見せる中心（ワールド XZ）。カーソルから離れるほど薄くなる */
+  private readonly ghostFocus = { value: new THREE.Vector2(0, 0) };
   private readonly piecesRoot = new THREE.Group();
   private readonly entries = new Map<number, PieceEntry>();
   private readonly ghostMats = {
@@ -93,7 +126,10 @@ export class CourseView {
     ghostGeo.rotateX(-Math.PI / 2);
     this.levelGhostCells = new THREE.InstancedMesh(
       ghostGeo,
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.15, depthWrite: false, side: THREE.DoubleSide }),
+      withCursorFade(
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.1, depthWrite: false, side: THREE.DoubleSide }),
+        this.ghostFocus,
+      ),
       this.cells.length,
     );
     const edge: number[] = [];
@@ -112,7 +148,7 @@ export class CourseView {
     edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edge, 3));
     const edges = new THREE.LineSegments(
       edgeGeo,
-      new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.2, depthWrite: false }),
+      withCursorFade(new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.16, depthWrite: false }), this.ghostFocus),
     );
     this.levelGhostCells.renderOrder = 1;
     edges.renderOrder = 2;
@@ -248,6 +284,16 @@ export class CourseView {
   }
 
   /** ゴースト（設置レベルの半透明グリッド）を出す。null で隠す */
+  /** ゴーストを見せる中心（カーソルのセル）。null ならゴーストを隠す */
+  setGhostFocus(cell: Axial | null): void {
+    if (!cell) {
+      this.ghostFocus.value.set(1e6, 1e6);
+      return;
+    }
+    const w = axialToWorld(cell.q, cell.r);
+    this.ghostFocus.value.set(w.x, w.z);
+  }
+
   setLevelGhost(level: number | null): void {
     this.levelGhost.visible = level !== null;
     if (level !== null) this.levelGhost.position.y = level * LEVEL_HEIGHT + 0.004;

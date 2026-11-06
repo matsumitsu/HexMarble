@@ -319,6 +319,7 @@ export class App {
     const level = this.ghostLevel(cell);
     const check = canPlace(this.course, this.tool, cell.q, cell.r, level);
     this.view.setGhost(this.tool, cell, level, this.ghostRot, check.ok);
+    this.view.setGhostFocus(cell);
     this.view.setHover(cell, level);
   }
 
