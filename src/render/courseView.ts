@@ -93,7 +93,7 @@ export class CourseView {
     ghostGeo.rotateX(-Math.PI / 2);
     this.levelGhostCells = new THREE.InstancedMesh(
       ghostGeo,
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.15, depthWrite: false, side: THREE.DoubleSide }),
       this.cells.length,
     );
     const edge: number[] = [];
@@ -112,7 +112,7 @@ export class CourseView {
     edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edge, 3));
     const edges = new THREE.LineSegments(
       edgeGeo,
-      new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.35, depthWrite: false }),
+      new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.2, depthWrite: false }),
     );
     this.levelGhostCells.renderOrder = 1;
     edges.renderOrder = 2;
