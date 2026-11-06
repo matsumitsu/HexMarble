@@ -48,9 +48,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; }
 .panel h2 { margin: 2px 4px 8px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 1px; }
 .hidden { display: none !important; }
 
-.palette { top: 12px; left: 12px; width: 178px; display: flex; flex-direction: column; gap: 4px; max-height: calc(100% - 60px); overflow-y: auto; }
+.palette { top: 12px; left: 12px; width: 300px; display: flex; flex-direction: column; gap: 4px; max-height: calc(100% - 60px); overflow-y: auto; }
 .btn.tool { display: flex; align-items: center; gap: 8px; padding: 4px 8px; text-align: left; }
-.btn.tool .name { flex: 1; }
+.btn.tool .name { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.tile-grid .btn.tool { gap: 5px; padding: 3px 6px; min-width: 0; }
 .btn.tool kbd { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
 .btn.tool.active { border-color: var(--accent); background: #173a3a; box-shadow: inset 0 0 0 1px var(--accent); }
 .btn.tool .glyph { width: 34px; text-align: center; font-size: 22px; color: var(--muted); }
@@ -94,6 +96,6 @@ html, body { margin: 0; height: 100%; overflow: hidden; }
 @keyframes hold { to { stroke-dashoffset: 0; } }
 
 @media (max-width: 760px) {
-  .palette { width: 140px; }
+  .palette { width: 220px; }
   .inspector { width: 190px; }
 }

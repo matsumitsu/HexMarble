@@ -22,6 +22,7 @@ export interface UiHandlers {
   onImport(file: File): void;
   onNew(): void;
   onSample(): void;
+  onToggleSound(): void;
 }
 
 const h = <K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { dataset?: Record<string, string> } = {}, ...children: (Node | string)[]) => {
@@ -59,6 +60,7 @@ export class Ui {
   private readonly toastEl: HTMLElement;
   private readonly holdRing: HTMLElement;
   private toastTimer = 0;
+  private readonly soundBtn: HTMLButtonElement;
 
   constructor(root: HTMLElement, private readonly handlers: UiHandlers) {
     const H = handlers;
@@ -75,12 +77,14 @@ export class Ui {
       if (f) H.onImport(f);
       fileInput.value = '';
     });
+    this.soundBtn = button('🔔', 'チャイムの音を鳴らす / 消す', H.onToggleSound, 'icon');
     const header = h(
       'header',
       { className: 'topbar' },
       h('div', { className: 'logo', innerHTML: '<span class="logo-mark">⬡</span>Hex<b>Marble</b>' }),
       h('div', { className: 'group' }, this.modeBtns.edit, this.modeBtns.run),
       h('div', { className: 'group' }, this.undoBtn, this.redoBtn),
+      h('div', { className: 'group' }, this.soundBtn),
       h(
         'div',
         { className: 'group file' },
@@ -98,10 +102,12 @@ export class Ui {
     this.palette = h('aside', { className: 'panel palette' }, h('h2', {}, 'タイル'));
     const selectBtn = this.toolButton('select', '<span class="glyph">⌖</span>', '選択', 'Esc', '置いたタイルを選択する（Q で設置モードを終了）');
     this.palette.append(selectBtn);
+    const grid = h('div', { className: 'tile-grid' });
     PALETTE_ORDER.forEach((type, i) => {
       const def = getPart(type);
-      this.palette.append(this.toolButton(type, partIconSvg(type, 34), def.name, PALETTE_KEYS[i] ?? '', def.description));
+      grid.append(this.toolButton(type, partIconSvg(type, 28), def.name, PALETTE_KEYS[i] ?? '', def.description));
     });
+    this.palette.append(grid);
     this.palette.append(
       h('p', { className: 'hint', innerHTML: '<b>R</b> 回転（<b>Shift</b>で逆）<br><b>E</b> レベルを上げる（<b>Shift</b>で下げる）<br><b>Q</b> スポイト / 設置をやめる<br><b>右長押し</b> タイルを削除<br><b>緑</b>のセルは既存のコースとつながる場所' }),
     );
@@ -154,7 +160,7 @@ export class Ui {
   }
 
   private toolButton(tool: PartType | 'select', icon: string, name: string, key: string, desc: string): HTMLButtonElement {
-    const b = button(`${icon}<span class="name">${name}</span><kbd>${key}</kbd>`, desc, () =>
+    const b = button(`${icon}<span class="name">${name}</span>${key ? `<kbd>${key}</kbd>` : ''}`, desc, () =>
       this.handlers.onTool(tool === 'select' ? null : tool),
       'tool',
     );
@@ -191,6 +197,11 @@ export class Ui {
     this.speedSel.value = String(state.speed);
     this.status.textContent = state.statusText;
     this.status.dataset.kind = state.statusKind;
+  }
+
+  setSound(enabled: boolean): void {
+    this.soundBtn.innerHTML = enabled ? '🔔' : '🔕';
+    this.soundBtn.classList.toggle('off', !enabled);
   }
 
   toast(msg: string, kind: 'info' | 'error' = 'info'): void {
