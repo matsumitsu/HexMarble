@@ -9,6 +9,13 @@ import { createGhostMesh, createPartMesh, hexShape } from './meshes';
 
 export type CellHighlight = 'none' | 'placeable' | 'connects' | 'blocked';
 
+const GHOST_COLORS: Record<CellHighlight, THREE.Color> = {
+  none: new THREE.Color(0x35557a),
+  placeable: new THREE.Color(0x4a7fc0),
+  connects: new THREE.Color(0x2fdf81),
+  blocked: new THREE.Color(0x80304a),
+};
+
 const TILE_COLORS: Record<CellHighlight, THREE.Color> = {
   none: new THREE.Color(0x1e2738),
   placeable: new THREE.Color(0x35557a),
@@ -34,6 +41,9 @@ export class CourseView {
   readonly root = new THREE.Group();
   readonly cells: Axial[] = cellsInRadius(GRID_RADIUS);
   readonly tiles: THREE.InstancedMesh;
+  /** ゴースト：設置モードで、置こうとしているレベルに出す半透明の六角グリッド。配置できるかの色分けもここに出す */
+  private readonly levelGhost: THREE.Group;
+  private readonly levelGhostCells: THREE.InstancedMesh;
   private readonly piecesRoot = new THREE.Group();
   private readonly entries = new Map<number, PieceEntry>();
   private readonly ghostMats = {
@@ -78,6 +88,38 @@ export class CourseView {
     });
     this.tiles.receiveShadow = true;
     this.root.add(this.tiles);
+
+    const ghostGeo = new THREE.ShapeGeometry(hexShape(HEX_SIZE * 0.93));
+    ghostGeo.rotateX(-Math.PI / 2);
+    this.levelGhostCells = new THREE.InstancedMesh(
+      ghostGeo,
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide }),
+      this.cells.length,
+    );
+    const edge: number[] = [];
+    this.cells.forEach((c, i) => {
+      const w = axialToWorld(c.q, c.r);
+      m.makeTranslation(w.x, 0, w.z);
+      this.levelGhostCells.setMatrixAt(i, m);
+      this.levelGhostCells.setColorAt(i, TILE_COLORS.placeable);
+      for (let k = 0; k < 6; k++) {
+        const c0 = hexCorner(k, HEX_SIZE * 0.93);
+        const c1 = hexCorner((k + 1) % 6, HEX_SIZE * 0.93);
+        edge.push(w.x + c0.x, 0, w.z + c0.z, w.x + c1.x, 0, w.z + c1.z);
+      }
+    });
+    const edgeGeo = new THREE.BufferGeometry();
+    edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edge, 3));
+    const edges = new THREE.LineSegments(
+      edgeGeo,
+      new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.35, depthWrite: false }),
+    );
+    this.levelGhostCells.renderOrder = 1;
+    edges.renderOrder = 2;
+    this.levelGhost = new THREE.Group();
+    this.levelGhost.add(this.levelGhostCells, edges);
+    this.levelGhost.visible = false;
+    this.root.add(this.levelGhost);
 
     this.selection = hexOutline(0xffffff, 1.0);
     this.hover = hexOutline(0x9fd3ff, 0.97);
@@ -199,9 +241,16 @@ export class CourseView {
     return [...this.entries.values()].map((e) => e.group);
   }
 
+  /** 配置できるか・つながるかをゴーストのセルに色分けする */
   setHighlights(get: (cell: Axial) => CellHighlight): void {
-    this.cells.forEach((c, i) => this.tiles.setColorAt(i, TILE_COLORS[get(c)]));
-    if (this.tiles.instanceColor) this.tiles.instanceColor.needsUpdate = true;
+    this.cells.forEach((c, i) => this.levelGhostCells.setColorAt(i, GHOST_COLORS[get(c)]));
+    if (this.levelGhostCells.instanceColor) this.levelGhostCells.instanceColor.needsUpdate = true;
+  }
+
+  /** ゴースト（設置レベルの半透明グリッド）を出す。null で隠す */
+  setLevelGhost(level: number | null): void {
+    this.levelGhost.visible = level !== null;
+    if (level !== null) this.levelGhost.position.y = level * LEVEL_HEIGHT + 0.004;
   }
 
   setGhost(type: PartType | null, cell: Axial | null, level: number, rot: number, ok: boolean): void {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GRID_RADIUS, HEX_SIZE, MAX_LEVEL } from './core/constants';
+import { GRID_RADIUS, HEX_SIZE, LEVEL_HEIGHT, MAX_LEVEL } from './core/constants';
 import { CourseIndex, placementConnects } from './core/connections';
 import {
   canPlace,
@@ -39,8 +39,9 @@ export class App {
   private mode: Mode = 'edit';
   private tool: PartType | null = null;
   private ghostRot = 0;
-  /** 設置モードで E / Q で指定した設置レベル（null ならセルの最上部） */
-  private placeLevel: number | null = null;
+  /** 設置モードで置くレベル。この高さにゴースト（半透明のグリッド）を出し、カーソルはゴースト上でセルを指す */
+  private placeLevel = 0;
+  private lastPointer: { clientX: number; clientY: number } | null = null;
   private selectedId: number | null = null;
   private hoverCell: Axial | null = null;
   private hoverPieceId: number | null = null;
@@ -183,12 +184,10 @@ export class App {
   /** E / Q キー。カーソル下のタイル（なければ選択中のタイル）を1レベル上げる / 下げる */
   private levelKey(up: boolean): void {
     if (this.tool) {
-      const cell = this.hoverCell;
-      const cur = cell ? this.ghostLevel(cell) : (this.placeLevel ?? 0);
-      const next = Math.min(MAX_LEVEL, Math.max(0, cur + (up ? 1 : -1)));
+      const next = Math.min(MAX_LEVEL, Math.max(0, this.placeLevel + (up ? 1 : -1)));
       this.placeLevel = next;
       this.highlightsDirty = true;
-      this.updateGhost();
+      this.refreshHover();
       this.ui.toast(`設置レベル ${next}`);
       return;
     }
@@ -239,10 +238,8 @@ export class App {
     const p = this.hoveredPiece;
     if (!p) return;
     this.ghostRot = p.rot;
-    this.setTool(p.type);
     this.placeLevel = p.level;
-    this.highlightsDirty = true;
-    this.updateGhost();
+    this.setTool(p.type);
     this.ui.toast(`${getPart(p.type).name}を拾いました`);
   }
 
@@ -257,10 +254,9 @@ export class App {
     if (this.mode !== 'edit') this.setMode('edit');
     this.tool = tool;
     if (tool) this.selectedId = null;
-    else this.placeLevel = null;
     this.highlightsDirty = true;
     this.view.setSelection(null);
-    this.updateGhost();
+    this.refreshHover();
     this.refreshUi();
   }
 
@@ -283,20 +279,31 @@ export class App {
     this.highlightsDirty = false;
     const tool = this.tool;
     if (this.mode !== 'edit' || !tool) {
-      this.view.setHighlights(() => 'none');
+      this.view.setLevelGhost(null);
       return;
     }
+    this.view.setLevelGhost(this.placeLevel);
     const index = new CourseIndex(this.course);
     this.view.setHighlights(({ q, r }): CellHighlight => {
-      const check = canPlace(this.course, tool, q, r, this.placeLevel ?? undefined);
+      const check = canPlace(this.course, tool, q, r, this.placeLevel);
       if (!check.ok) return 'blocked';
       return placementConnects(index, tool, q, r, check.level, this.ghostRot) ? 'connects' : 'placeable';
     });
   }
 
-  /** 設置モードでカーソル位置に置くときのレベル（未指定ならセルの最上部） */
-  private ghostLevel(cell: Axial): number {
-    return this.placeLevel ?? stackTop(this.course, cell.q, cell.r);
+  /** 設置モードでカーソル位置に置くときのレベル */
+  private ghostLevel(_cell: Axial): number {
+    return this.placeLevel;
+  }
+
+  /** ゴーストの高さやツールが変わったとき、最後のカーソル位置でセルを指し直す */
+  private refreshHover(): void {
+    if (this.mode === 'edit' && this.lastPointer) {
+      const { cell, pieceId } = this.pick(this.lastPointer);
+      this.hoverCell = cell && this.view.cells.some((c) => c.q === cell.q && c.r === cell.r) ? cell : null;
+      this.hoverPieceId = pieceId;
+    }
+    this.updateGhost();
   }
 
   private updateGhost(): void {
@@ -389,10 +396,20 @@ export class App {
 
   // ---- 入力 ----
 
-  private pick(ev: { clientX: number; clientY: number }): { cell: Axial | null; pieceId: number | null } {
+  /**
+   * カーソル下のセルとタイルを求める。設置モードでは、ゴースト（設置レベルの面）との交点のセルを返す。
+   * pieces=true なら設置モードでもタイルを拾う（右クリック削除用）
+   */
+  private pick(ev: { clientX: number; clientY: number }, pieces = !this.tool): { cell: Axial | null; pieceId: number | null } {
     const rect = this.ctx.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((ev.clientX - rect.left) / rect.width) * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(this.pointer, this.ctx.camera);
+    if (!pieces) {
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -this.placeLevel * LEVEL_HEIGHT);
+      const pt = new THREE.Vector3();
+      if (this.raycaster.ray.intersectPlane(plane, pt)) return { cell: worldToAxial(pt.x, pt.z), pieceId: null };
+      return { cell: null, pieceId: null };
+    }
     const hits = this.raycaster.intersectObjects([this.view.tiles, ...this.view.pieceGroups()], true);
     for (const hit of hits) {
       const pid = hit.object.userData.pieceId as number | undefined;
@@ -414,6 +431,7 @@ export class App {
   private bindInput(): void {
     const el = this.ctx.renderer.domElement;
     el.addEventListener('pointermove', (ev) => {
+      this.lastPointer = { clientX: ev.clientX, clientY: ev.clientY };
       if (this.mode !== 'edit') return;
       const { cell, pieceId } = this.pick(ev);
       const inGrid = cell && this.view.cells.some((c) => c.q === cell.q && c.r === cell.r) ? cell : null;
@@ -426,6 +444,7 @@ export class App {
     el.addEventListener('pointerleave', () => {
       this.hoverCell = null;
       this.hoverPieceId = null;
+      this.lastPointer = null;
       this.updateGhost();
     });
     el.addEventListener('pointerdown', (ev) => {
@@ -442,8 +461,11 @@ export class App {
         const r = this.rightDownAt;
         this.rightDownAt = null;
         if (r && this.mode === 'edit' && Math.hypot(ev.clientX - r.x, ev.clientY - r.y) <= DRAG_THRESHOLD) {
-          const { pieceId } = this.pick(ev);
-          if (pieceId !== null) this.deletePiece(pieceId);
+          const { pieceId } = this.pick(ev, true);
+          if (pieceId !== null) {
+            this.deletePiece(pieceId);
+            this.refreshHover();
+          }
         }
         return;
       }

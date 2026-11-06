@@ -108,7 +108,7 @@ export class Ui {
     });
     this.palette.append(grid);
     this.palette.append(
-      h('p', { className: 'hint', innerHTML: '<b>R</b> 回転（<b>Shift</b>で逆）<br><b>E</b> / <b>Q</b> レベルを上げる / 下げる<br><b>C</b> スポイト / 設置をやめる<br><b>右クリック</b> タイルを削除<br><b>緑</b>のセルは既存のコースとつながる場所' }),
+      h('p', { className: 'hint', innerHTML: '<b>R</b> 回転（<b>Shift</b>で逆）<br><b>E</b> / <b>Q</b> レベルを上げる / 下げる<br><b>C</b> スポイト / 設置をやめる<br><b>右クリック</b> タイルを削除<br>半透明の<b>ゴースト</b>が設置レベル。<b>緑</b>のセルは既存のコースとつながる場所' }),
     );
 
     // インスペクタ
